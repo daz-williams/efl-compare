@@ -636,7 +636,7 @@ def _fetch_efl_with_browser(url, cache, pid=None):
     Returns a parsed EFL dict or None.
     """
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
     except ImportError:
         return None
 
@@ -663,20 +663,30 @@ def _fetch_efl_with_browser(url, cache, pid=None):
             if stealth_sync:
                 stealth_sync(page)
 
-            downloaded_path = None
-
-            def _on_download(dl):
-                nonlocal downloaded_path
-                dl.save_as(str(cache))
-                downloaded_path = cache
-
-            page.on("download", _on_download)
-            page.goto(url, timeout=30_000, wait_until="networkidle")
-
-            if downloaded_path:
-                # Navigation triggered a PDF download (e.g. Tara/Amigo)
+            # Direct-download providers (e.g. Tara/Amigo) serve the EFL with a
+            # forced-download response — the navigation itself aborts
+            # (net::ERR_ABORTED) the instant the download starts. Using
+            # expect_download() keeps the wait-for-download and the goto()
+            # call in the same synchronous flow, so the browser can't be torn
+            # down mid-save the way it could when save_as() ran from an
+            # async "download" event callback racing goto()'s exception.
+            try:
+                with page.expect_download(timeout=5_000) as download_info:
+                    try:
+                        page.goto(url, timeout=30_000, wait_until="networkidle")
+                    except Exception as e:
+                        if "ERR_ABORTED" not in str(e):
+                            raise   # genuine navigation failure -- don't swallow it
+                download = download_info.value
+                download.save_as(str(cache))
+                if cache.read_bytes()[:4] != b"%PDF":
+                    return None   # downloaded something, but it isn't a real PDF
                 browser.close()
-                return parse_efl(downloaded_path)
+                if pid:
+                    _record_meta(pid, cache.name, url, "browser", cache.stat().st_size)
+                return parse_efl(cache)
+            except PlaywrightTimeoutError:
+                pass  # no download within 5s -- SPA/HTML-render case, fall through below
 
             # Page rendered as HTML (SPA provider).
             # Save PDF via Chromium's print engine — self-contained, reuses the
