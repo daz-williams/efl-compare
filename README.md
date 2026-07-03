@@ -28,6 +28,7 @@ Configured for the **Oncor service area**. Set your zip code via `--zip` or the 
    - ℹ badge with fee/credit details on hover
    - ⚠ badge for plans with one-time setup fees
    - `M` badge (violet) for manually-supplied EFLs — not fetched from or verified against powertochoose.org
+   - `CURRENT` badge (teal), outlined row, and a dedicated always-shown card for your existing plan — see [Your Current Plan](#your-current-plan)
    - **vs best longer column** — color-coded delta (green/amber/red) at your compare tier, with styled hover tooltip showing which plan is being compared and its rate
    - Plan name links open the EFL PDF in a new tab
 
@@ -133,6 +134,7 @@ EFL_ZIP=YOUR_ZIP EFL_TIERS=LOW,MID,HIGH py3 efl_compare.py
 | `--manual-efl PATH` | none | Local EFL PDF to include alongside PUCT plans. Repeatable. |
 | `--manual-efl-dir DIR` | none | Directory of local EFL PDFs to include (non-recursive, `*.pdf`). Repeatable. |
 | `--no-puct` | off | Skip fetching/downloading PUCT plans entirely — evaluate only manually-supplied EFLs. Requires at least one; `--zip` not required when set. |
+| `--current-efl PATH` | none | Your current plan's EFL. Parsed like `--manual-efl` and included in the comparison, but marked conspicuously — see [Your Current Plan](#your-current-plan). |
 
 **Rate calculation**
 
@@ -191,6 +193,11 @@ py -3.12 efl_compare.py --manual-efl-dir ./my_offers
 py -3.12 efl_compare.py --no-puct --manual-efl-dir ./my_offers
 ```
 
+**Mark your current plan in the comparison:**
+```
+py -3.12 efl_compare.py --current-efl ./my_current_plan.pdf
+```
+
 ---
 
 ## Manual EFLs
@@ -202,6 +209,17 @@ Texas EFLs are a state-mandated standardized disclosure (16 TAC §25.475), so a 
 Header layout isn't fully standardized across REPs, though, so extraction is best-effort per field. If a field can't be found, the plan is still included with a placeholder (filename for REP/product, `0` for term, `Unknown` for the termination fee, `?` for renewable %) and a printed `[MANUAL EFL]` warning naming exactly what wasn't found — but the **rate itself is never guessed**. If the actual energy charge and credit structure can't be determined from the EFL text at all, that plan is excluded from the results with a loud warning telling you to check the PDF, rather than shown with a fabricated number.
 
 Manually-supplied plans are parsed directly from disk and skip the PUCT download/cache-freshness machinery entirely. They're marked with a violet `M` badge in the Flags column so they're never mistaken for a PUCT-verified plan.
+
+### Your Current Plan
+
+`--current-efl PATH` parses your existing plan's EFL the same way as `--manual-efl` and includes it in the comparison — but marked conspicuously rather than blending in:
+
+- A teal `CURRENT` badge in the Flags column (text table and HTML)
+- An outlined row in the HTML table, with a 📍 pin in place of the star/heart in the first column
+- A dedicated "Your Current Plan" card, always shown in the HTML top-picks area
+- A console callout (printed even without `--text-table`) comparing your rate against the cheapest plan found and estimating $/mo savings from switching
+
+Your current plan is a **reference point, not a competitor** — it sorts into its natural position in the table by rate, but never wins "best in group," never appears in the Top Picks / top-3 cards, and never counts as the comparator for other plans' "vs best longer" delta column, even if it happens to be the cheapest plan in the whole comparison. In that case the callout says so plainly ("already cheaper than every other plan in this comparison") instead of showing a fabricated negative "savings" figure. Collapsing a term group to "best only" never hides your current plan's row, the same way it never hides the best-in-group row.
 
 ---
 
@@ -227,6 +245,7 @@ Open `plans_latest.html` in any browser. Fully self-contained — no external de
 - `ℹ` — hover to see the fee/credit description from PUCT's data
 - `⚠ $X` — one-time setup fee (not included in the displayed rates)
 - `M` — manually-supplied EFL (see [Manual EFLs](#manual-efls)) — not fetched from or verified against powertochoose.org
+- `CURRENT` — your existing plan (see [Your Current Plan](#your-current-plan))
 
 **vs best longer column:** Color-coded rate delta vs the best plan with a strictly longer contract, at your compare tier. Hover anywhere in the cell for a styled tooltip showing which plan is being compared and its rate. Green = small delta (<1¢), amber = moderate (1–3¢), red = large (>3¢).
 

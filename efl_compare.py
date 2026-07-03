@@ -1396,6 +1396,11 @@ def parse_args():
                      help="Skip fetching/downloading PUCT plans entirely -- evaluate only "
                           "--manual-efl / --manual-efl-dir plans. Requires at least one; "
                           "--zip is not required when this is set.")
+    grp.add_argument("--current-efl", default=None, metavar="PATH",
+                     help="Path to your current EFL PDF. Parsed the same way as --manual-efl "
+                          "and included in the comparison, but marked conspicuously in the "
+                          "text table and HTML (a CUR badge, an outlined row, and a dedicated "
+                          "callout summarizing savings vs. the cheapest plan found).")
 
     grp = p.add_argument_group("rate calculation")
     grp.add_argument("--no-enrollment-credits", action="store_true",
@@ -1500,8 +1505,22 @@ def main():
         manual_efl_results[m_plan["[idKey]"]] = m_efl
         manual_warnings.extend(m_warns)
 
+    # ── Current EFL: your existing plan, marked conspicuously in output ─────
+    current_plan = None
+    if args.current_efl:
+        cp = Path(args.current_efl)
+        if not cp.is_file():
+            print(f"  WARNING: --current-efl path not found, skipping: {args.current_efl}")
+        else:
+            current_plan, c_efl, c_warns = _build_manual_plan(cp, "current")
+            current_plan["_current"] = True
+            manual_plans.append(current_plan)
+            manual_efl_results[current_plan["[idKey]"]] = c_efl
+            manual_warnings.extend(c_warns)
+
     if manual_plans:
-        print(f"\n  {len(manual_plans)} manual EFL(s) loaded from local file(s).")
+        print(f"\n  {len(manual_plans)} manual EFL(s) loaded from local file(s)"
+              f"{' (including your current plan)' if current_plan else ''}.")
         for w in manual_warnings:
             print(f"    [MANUAL EFL] {w}")
 
@@ -1808,6 +1827,7 @@ def main():
             "tiers":     tiers,
             "src":       src,
             "manual":    bool(plan.get("_manual")),
+            "current":   bool(plan.get("_current")),
             "facts_url":     (plan.get("[FactsURL]")      or "").strip(),
             "fees_credits":  (plan.get("[Fees/Credits]")  or "").strip(),
             "special_terms": (plan.get("[SpecialTerms]")  or "").strip(),
@@ -1840,9 +1860,10 @@ def main():
     # Sort: longer term first, then cheapest at compare tier within each term
     results.sort(key=lambda r: (-r["term"], r["tiers"].get(COMPARE_TIER, 999)))
 
-    # For each plan, find the best rate at compare tier among all plans with a strictly longer term
+    # For each plan, find the best rate at compare tier among all plans with a strictly longer term.
+    # Your current plan is a reference point, not a competitor -- it never counts as "best."
     def best_rate_longer_term(term):
-        candidates = [r["tiers"][COMPARE_TIER] for r in results if r["term"] > term]
+        candidates = [r["tiers"][COMPARE_TIER] for r in results if r["term"] > term and not r["current"]]
         return min(candidates) if candidates else None
 
     # Build output table
@@ -1880,6 +1901,7 @@ def main():
         flags_txt = ""
         if r["has_crd"]: flags_txt += "¢"
         if r["manual"]:  flags_txt += " M"
+        if r["current"]: flags_txt += " <CURRENT>"
         if fn_ref:        flags_txt += f" {fn_ref}"
         rows.append([
             r["provider"][:28],
@@ -1897,7 +1919,7 @@ def main():
         print(tabulate(rows, headers=headers, tablefmt="simple", floatfmt=".2f"))
         print(f"""
 TDU charges applied: ${tdu['fixed_mo']:.2f}/mo fixed + {tdu['per_kwh']*100:.4f}¢/kWh  (same for all providers)
-Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit | M=manually-supplied EFL (not PUCT-verified) | [n]=fee/credit footnote
+Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit | M=manually-supplied EFL (not PUCT-verified) | <CURRENT>=your current plan | [n]=fee/credit footnote
 All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
 {f"Personal tiers: {', '.join(str(k) for k in USAGE_TIERS if k not in _EFL_TIERS)} kWh  (standard EFL tiers: 500 / 1,000 / 2,000)" if any(k not in _EFL_TIERS for k in USAGE_TIERS) else "Standard EFL tiers only: 500 / 1,000 / 2,000 kWh"}
 """)
@@ -1906,9 +1928,13 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
             for _fc_text, _fc_num in sorted(_footnotes.items(), key=lambda x: x[1]):
                 print(f"  [{_fc_num}] {_fc_text}")
             print()
-        # Top picks
+        # Top picks -- your current plan is a reference point, never a pick
         from itertools import groupby as _gb
-        _starred = [list(g)[0] for _, g in _gb(results, key=lambda r: r["term"])]
+        _starred = [
+            next((x for x in g if not x["current"]), None)
+            for _, g in _gb(results, key=lambda r: r["term"])
+        ]
+        _starred = [s for s in _starred if s is not None]
         _top3    = sorted(_starred, key=lambda r: r["tiers"].get(COMPARE_TIER, 999))[:3]
         _medals  = ["1st", "2nd", "3rd"]
         print("-" * 72)
@@ -1919,6 +1945,32 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
             print(f"  {_medals[_i]}  {_label}  "
                   f"{_r['provider'][:28]:<28} / {_r['plan'][:28]:<28}  "
                   f"{_r['tiers'][COMPARE_TIER]:.2f}¢  ETF: {_r['etf'] or '$0'}")
+        print()
+
+    # Current-plan callout -- printed regardless of --text-table so it always
+    # surfaces on the console, not just in the full table dump.
+    _current_r = next((r for r in results if r["current"]), None)
+    if _current_r:
+        _cur_rate  = _current_r["tiers"][COMPARE_TIER]
+        _others    = [r for r in results if not r["current"]]
+        _best_r    = min(_others, key=lambda r: r["tiers"][COMPARE_TIER]) if _others else None
+        print("-" * 72)
+        print("  YOUR CURRENT PLAN")
+        print("-" * 72)
+        print(f"  {_current_r['provider'][:28]} / {_current_r['plan'][:28]}  "
+              f"({_current_r['term']}-mo)  {_cur_rate:.2f}¢  ETF: {_current_r['etf'] or '$0'}"
+              f"  @ {COMPARE_TIER:,} kWh")
+        if _best_r is None:
+            print("  No other plans in this comparison to measure against.")
+        elif _cur_rate <= _best_r["tiers"][COMPARE_TIER]:
+            print("  Your current plan is already cheaper than every other plan in this comparison.")
+        else:
+            _delta = _cur_rate - _best_r["tiers"][COMPARE_TIER]
+            _save_mo = _delta / 100 * COMPARE_TIER
+            print(f"  Cheapest found: {_best_r['provider'][:28]} / {_best_r['plan'][:28]} "
+                  f"({_best_r['term']}-mo)  {_best_r['tiers'][COMPARE_TIER]:.2f}¢")
+            print(f"  You could save ~{_delta:.2f}¢/kWh -- about ${_save_mo:.2f}/mo "
+                  f"@ {COMPARE_TIER:,} kWh -- by switching.")
         print()
 
     if not args.no_html:
@@ -1950,6 +2002,7 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
                     "has_bill_credit":       r["has_crd"],
                     "src":                   r["src"],
                     "manual":                r["manual"],
+                    "current":               r["current"],
                     "energy_charge_cents":   r["ec_cents"],
                     "base_charge_dollars":   r["bc"],
                     "tdu_bundled":           r["tdu_bundled"],
@@ -2088,12 +2141,20 @@ def _write_html(results, tdu, zip_code, out_path=None):
                 'min-width:1.0em;text-align:center;'
                 'vertical-align:middle;user-select:none;line-height:1.4">M</span>'
             )
+        if r["current"]:
+            flags += (
+                ' <span title="Your current plan" '
+                'style="cursor:help;display:inline-block;background:#0d9488;color:#fff;'
+                'font-size:0.75em;font-weight:700;padding:0px 5px;border-radius:4px;'
+                'text-align:center;'
+                'vertical-align:middle;user-select:none;line-height:1.4">CURRENT</span>'
+            )
 
         tier_tds = "".join(f'<td>{r["tiers"][k]:.2f}</td>' for k in USAGE_TIERS)
 
         best_candidates = [
             (x["tiers"][COMPARE_TIER], x["provider"], x["plan"], x["term"])
-            for x in results if x["term"] > r["term"]
+            for x in results if x["term"] > r["term"] and not x["current"]
         ]
         if best_candidates:
             best_rate, best_prov, best_plan_name, best_term = min(
@@ -2113,13 +2174,20 @@ def _write_html(results, tdu, zip_code, out_path=None):
         else:
             delta_td = '<td></td>'
 
-        # Top row gets a non-clickable star; others get a clickable heart toggle.
-        if is_best:
+        # Current plan gets a pin (never competes for best/favorite); top
+        # non-current row in a group gets a non-clickable star; others get a
+        # clickable heart toggle.
+        if r["current"]:
+            fav_td = '<td class="current-cell" title="Your current plan"></td>'
+        elif is_best:
             fav_td = '<td class="star-cell" title="Best in group"></td>'
         else:
             fav_td = '<td class="fav-btn" onclick="toggleHeart(this,event)" title="Favorite this plan"></td>'
+        row_classes = [f"src-{src}"]
+        if is_best and not r["current"]: row_classes.append("best")
+        if r["current"]:                 row_classes.append("current-row")
         return (
-            f'<tr class="src-{src}">'
+            f'<tr class="{" ".join(row_classes)}">'
             f'{fav_td}'
             f'<td>{r["provider"]}</td><td>{plan_cell}</td>'
             f'<td>{r["term"]}</td><td>{r["etf"]}</td>'
@@ -2130,15 +2198,16 @@ def _write_html(results, tdu, zip_code, out_path=None):
         )
 
     # results are already sorted by (-term, rate); groupby preserves that order.
-    # First row in each group is the cheapest (best) — marked with class "best".
+    # First NON-current row in each group is the cheapest (best) — marked with
+    # class "best". Your current plan never holds that designation.
     body = ""
     for term, grp in groupby(results, key=lambda r: r["term"]):
-        gid        = f"g{term}"
-        group_list = list(grp)
-        rows       = ""
-        for i, r in enumerate(group_list):
-            row_class = ' class="best"' if i == 0 else ""
-            rows += plan_row(r, is_best=(i == 0)).replace("<tr ", f"<tr{row_class} ", 1)
+        gid          = f"g{term}"
+        group_list   = list(grp)
+        best_pid     = next((x["pid"] for x in group_list if not x["current"]), None)
+        rows         = ""
+        for r in group_list:
+            rows += plan_row(r, is_best=(r["pid"] == best_pid))
         body += (
             f'<tr id="{gid}-hdr" class="grp-hdr" data-state="all" '
             f'onclick="toggleGroup(\'{gid}\')">'
@@ -2148,12 +2217,13 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'<tbody id="{gid}">\n{rows}</tbody>\n'
         )
 
-    # ── Top 3 picks cards ──────────────────────────────────────────────────
+    # ── Top 3 picks cards ── your current plan is a reference, never a pick ──
     medals   = ["🥇", "🥈", "🥉"]
     starred  = []
     for _term, _grp in groupby(results, key=lambda r: r["term"]):
-        _gl = list(_grp)
-        starred.append(_gl[0])
+        _pick = next((x for x in _grp if not x["current"]), None)
+        if _pick is not None:
+            starred.append(_pick)
     top3     = sorted(starred, key=lambda r: r["tiers"][COMPARE_TIER])[:3]
     cards    = ""
     for _i, _r in enumerate(top3):
@@ -2171,6 +2241,40 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'</div></div>\n'
         )
     top3_html = f'<div class="top-picks-outer"><div class="top-picks">\n{cards}</div></div>'
+
+    # ── Your current plan card ───────────────────────────────────────────────
+    current_card_html = ""
+    _cur = next((r for r in results if r["current"]), None)
+    if _cur:
+        _cur_rate = _cur["tiers"][COMPARE_TIER]
+        _cur_url  = _cur.get("facts_url", "")
+        _cur_pname = (
+            f'<a href="{_cur_url}" target="_blank" style="color:inherit;text-decoration:none">{_cur["plan"]}</a>'
+            if _cur_url else _cur["plan"]
+        )
+        _others = [r for r in results if not r["current"]]
+        _best   = min(_others, key=lambda r: r["tiers"][COMPARE_TIER]) if _others else None
+        if _best is None:
+            _cur_savings = "No other plans in this comparison to measure against."
+        elif _cur_rate <= _best["tiers"][COMPARE_TIER]:
+            _cur_savings = "Already cheaper than every other plan in this comparison."
+        else:
+            _delta   = _cur_rate - _best["tiers"][COMPARE_TIER]
+            _save_mo = _delta / 100 * COMPARE_TIER
+            _cur_savings = f"Could save ~{_delta:.2f}¢/kWh (~${_save_mo:.2f}/mo) by switching to the cheapest plan found."
+        current_card_html = (
+            '<div class="top-picks-outer"><div class="top-picks">\n'
+            '<div class="top-card current-card"><div class="top-card-inner">'
+            '<div class="top-card-rank">&#128205; <span style="font-size:0.62em;font-family:sans-serif;'
+            'color:var(--text-mid);font-weight:700;vertical-align:middle">Your Current Plan</span></div>'
+            f'<div class="top-card-provider">{_cur["provider"]}</div>'
+            f'<div class="top-card-plan">{_cur_pname}</div>'
+            f'<div class="top-card-rate">{_cur_rate:.2f}¢<span>@ {COMPARE_TIER:,} kWh</span></div>'
+            f'<div class="top-card-meta">{_cur["term"]}-month &nbsp;·&nbsp; ETF: {_cur["etf"] or "$0"}</div>'
+            f'<div class="top-card-meta" style="margin-top:4px">{_cur_savings}</div>'
+            '</div></div>\n'
+            '</div></div>'
+        )
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2233,11 +2337,12 @@ def _write_html(results, tdu, zip_code, out_path=None):
               font-weight: bold; cursor: pointer; user-select: none; }}
   .grp-hdr:hover td {{ background-color: rgba(255,255,255,0.12) !important; }}
   tbody.show-best .hideable {{ display: none; }}
-  td.fav-btn, td.star-cell, thead th:first-child {{ padding: 1px 3px; width: 30px; min-width: 30px; max-width: 30px; text-align: center; }}
+  td.fav-btn, td.star-cell, td.current-cell, thead th:first-child {{ padding: 1px 3px; width: 30px; min-width: 30px; max-width: 30px; text-align: center; }}
   td.fav-btn {{ cursor: pointer; }}
   td.fav-btn::before  {{ content: '❤'; font-size: 1.1em; line-height: 1; color: #e8c8d0; }}
   td.fav-btn.filled::before {{ color: #cc0033; }}
   td.star-cell::before {{ content: '★'; font-size: 1.5em; line-height: 0.75; color: #f0c040; }}
+  td.current-cell::before {{ content: '📍'; font-size: 1.1em; line-height: 1; }}
   .legend {{ margin-top: 12px; font-family: sans-serif; font-size: 0.8em; color: var(--text-dim); }}
   .swatch {{ display:inline-block; width:14px; height:14px;
              vertical-align:middle; margin-right:4px; border:1px solid var(--sw-border); }}
@@ -2264,6 +2369,9 @@ def _write_html(results, tdu, zip_code, out_path=None):
   .top-card:nth-child(1) {{ border-left: 3px solid #f59e0b; }}
   .top-card:nth-child(2) {{ border-left: 3px solid #94a3b8; }}
   .top-card:nth-child(3) {{ border-left: 3px solid #b45309; }}
+  .top-card.current-card {{ border-left: 3px solid #0d9488 !important; }}
+  /* ── Current plan row ── */
+  tr.current-row {{ outline: 2px solid #0d9488; outline-offset: -2px; }}
   /* ── VS column custom tooltip ── */
   .vs-cell {{ white-space: nowrap; cursor: default; }}
   .vs-tip {{
@@ -2367,7 +2475,7 @@ function toggleHeart(td, event) {{
 
 // Mark hideable rows once on load so toggles use fast class lookup
 document.addEventListener('DOMContentLoaded', function() {{
-  document.querySelectorAll('tbody tr:not(.best)').forEach(function(r) {{
+  document.querySelectorAll('tbody tr:not(.best):not(.current-row)').forEach(function(r) {{
     r.classList.add('hideable');
   }});
 }});
@@ -2427,6 +2535,7 @@ function toggleDark() {{
   All rates ¢/kWh effective (energy + base + TDU, excl. taxes) &nbsp;|&nbsp;
   Plan name links open the EFL in a new tab.
 </p>
+{current_card_html}
 {top3_html}
 <table aria-hidden="true">
 <thead>
@@ -2437,7 +2546,7 @@ function toggleDark() {{
   <th title="Contract term in months">Mo</th>
   <th title="Early termination fee">ETF</th>
   <th title="Renewable energy content percentage">Rnw%</th>
-  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org">Flags</th>
+  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org&#10;CURRENT Your current plan">Flags</th>
   {tier_ths_titled}
   <th title="Rate difference vs best plan with longer contract, at {ct_label} kWh/month">vs best longer@{ct_label}</th>
 </tr>
@@ -2449,7 +2558,8 @@ function toggleDark() {{
   <span class="swatch src-llm"></span> LLM — high accuracy &nbsp;
   <span class="swatch src-api"></span> API — estimated (less accurate) &nbsp;
   <span style="display:inline-block;background:#e6a817;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">&#162;</span> Bill-credit plan — rate only valid near the credit threshold kWh &nbsp;
-  <span style="display:inline-block;background:#7c4dcc;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">M</span> Manually-supplied EFL — not fetched from or verified against powertochoose.org
+  <span style="display:inline-block;background:#7c4dcc;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">M</span> Manually-supplied EFL — not fetched from or verified against powertochoose.org &nbsp;
+  <span style="display:inline-block;background:#0d9488;color:#fff;font-size:0.75em;font-weight:700;padding:0px 5px;border-radius:4px;vertical-align:middle;line-height:1.4">CURRENT</span> Your current plan
 </div>
 </body>
 </html>
