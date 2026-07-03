@@ -31,6 +31,7 @@ Configured for the **Oncor service area**. Set your zip code via `--zip` or the 
    - `CURRENT` badge (teal), outlined row, and a dedicated always-shown card for your existing plan — see [Your Current Plan](#your-current-plan)
    - **vs best longer column** — color-coded delta (green/amber/red) at your compare tier, with styled hover tooltip showing which plan is being compared and its rate
    - Plan name links open the EFL PDF in a new tab
+   - Small `⋯` next to the plan name reveals a Terms of Service / YRAC (Your Rights as a Customer) link menu on hover
 
 ---
 
@@ -236,6 +237,8 @@ Open `plans_latest.html` in any browser. Fully self-contained — no external de
 **Group header controls:**
 - Click a group header to cycle: ▼ (all plans) → ★ (best + favorites) → ▶ (hidden) → ▼
 - Click the ▼ in the top-left header cell to apply the same state to all groups
+
+**Plan docs menu:** A small `⋯` after the plan name (when PUCT's CSV provides the link — not present for [manual EFLs](#manual-efls)) opens a horizontal icon menu on hover with 📄 Terms of Service and ⚖ Your Rights as a Customer (YRAC), each opening in a new tab. Shows whichever of the two PUCT actually supplies if only one is present.
 
 **Row badges (Flags column, hover for details):**
 - `[EFL]` — rates from the legal EFL document (most accurate)

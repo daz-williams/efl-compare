@@ -1829,6 +1829,8 @@ def main():
             "manual":    bool(plan.get("_manual")),
             "current":   bool(plan.get("_current")),
             "facts_url":     (plan.get("[FactsURL]")      or "").strip(),
+            "terms_url":     (plan.get("[TermsURL]")      or "").strip(),
+            "yrac_url":      (plan.get("[YRACURL]")       or "").strip(),
             "fees_credits":  (plan.get("[Fees/Credits]")  or "").strip(),
             "special_terms": (plan.get("[SpecialTerms]")  or "").strip(),
         })
@@ -2014,6 +2016,8 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
                     "bill_credits":          r["bill_credits"],
                     "rates_cents_per_kwh":   {str(k): round(v, 4) for k, v in r["tiers"].items()},
                     "facts_url":             r["facts_url"],
+                    "terms_url":             r["terms_url"],
+                    "yrac_url":              r["yrac_url"],
                     "fees_credits_text":     r["fees_credits"],
                     "special_terms":         r["special_terms"],
                 }
@@ -2095,6 +2099,23 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'<a href="{url}" target="_blank" title="Open EFL">{r["plan"]}</a>'
             if url else r["plan"]
         )
+
+        # Terms of Service / YRAC — PUCT-only fields, so manual/current EFLs
+        # (no CSV row) simply won't have them; omit rather than placeholder.
+        # Shows whichever of the two is actually present -- a plan missing
+        # just one (rare, but seen in the wild) still gets the other link
+        # rather than losing both.
+        terms_url  = r.get("terms_url", "")
+        yrac_url   = r.get("yrac_url", "")
+        doc_links  = ""
+        if terms_url:
+            doc_links += f'<a href="{terms_url}" target="_blank" title="Terms of Service">&#128196;</a>'
+        if yrac_url:
+            doc_links += f'<a href="{yrac_url}" target="_blank" title="Your Rights as a Customer (YRAC)">&#9878;</a>'
+        docs_menu = (
+            f'<span class="doc-menu-trigger">&#8943;</span>'
+            f'<span class="doc-menu-popup">{doc_links}</span>'
+        ) if doc_links else ""
 
         # Build Flags cell: [EFL/LLM/API] tag + optional ¢ (bill credit) + optional ℹ (fees text)
         tag_title = SRC_TAG.get(src, src.upper())
@@ -2189,7 +2210,7 @@ def _write_html(results, tdu, zip_code, out_path=None):
         return (
             f'<tr class="{" ".join(row_classes)}">'
             f'{fav_td}'
-            f'<td>{r["provider"]}</td><td>{plan_cell}</td>'
+            f'<td>{r["provider"]}</td><td>{plan_cell}{docs_menu}</td>'
             f'<td>{r["term"]}</td><td>{r["etf"]}</td>'
             f'<td>{r["rnw"]}%</td>'
             f'<td style="text-align:center;white-space:nowrap">{flags}</td>'
@@ -2388,6 +2409,22 @@ def _write_html(results, tdu, zip_code, out_path=None):
   body.light .vs-low  {{ color: #16a34a; }}
   body.light .vs-mid  {{ color: #d97706; }}
   body.light .vs-high {{ color: #dc2626; }}
+  /* ── Plan docs (Terms of Service / YRAC) hover menu ── */
+  .doc-menu-trigger {{
+    color: var(--text-dim); font-size: 0.7em; cursor: default;
+    padding: 0 2px; margin-left: 3px; user-select: none;
+  }}
+  .doc-menu-trigger:hover {{ color: var(--text); }}
+  .doc-menu-popup {{
+    display: none; position: fixed; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 5px 12px; z-index: 40; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }}
+  .doc-menu-popup a {{
+    font-size: 1.3em; line-height: 1; text-decoration: none;
+    opacity: 0.85; transition: opacity 0.1s, transform 0.1s; display: inline-block;
+  }}
+  .doc-menu-popup a:hover {{ opacity: 1; transform: scale(1.15); }}
   /* ── Theme toggle button ── */
   #theme-btn {{
     position: absolute; top: 14px; right: 18px;
@@ -2513,6 +2550,40 @@ document.addEventListener('mousemove', function(e) {{
 }});
 // Hide when mouse leaves the browser window entirely
 document.addEventListener('mouseleave', function() {{ _hideAllVsTips(); }});
+
+// Plan docs (Terms of Service / YRAC) hover menu -- single horizontal row of
+// icons, vertically centered on the trigger, so its height stays close to
+// one row and it can't spill into the row above/below. Opens sideways with
+// a short hide-delay so moving from the trigger into the menu is forgiving.
+var _docMenuHideTimer = null;
+function _showDocMenu(trigger) {{
+  document.querySelectorAll('.doc-menu-popup').forEach(function(m) {{ m.style.display = 'none'; }});
+  var menu = trigger.nextElementSibling;
+  if (!menu || !menu.classList.contains('doc-menu-popup')) return;
+  menu.style.display = 'flex';
+  var r  = trigger.getBoundingClientRect();
+  var mw = menu.offsetWidth, mh = menu.offsetHeight;
+  var mx = r.right + 4;
+  if (mx + mw > window.innerWidth - 6) mx = r.left - mw - 4;
+  var my = r.top + (r.height - mh) / 2;
+  if (my < 6) my = 6;
+  if (my + mh > window.innerHeight - 6) my = window.innerHeight - mh - 6;
+  menu.style.left = mx + 'px';
+  menu.style.top  = my + 'px';
+}}
+function _hideDocMenusSoon() {{
+  clearTimeout(_docMenuHideTimer);
+  _docMenuHideTimer = setTimeout(function() {{
+    document.querySelectorAll('.doc-menu-popup').forEach(function(m) {{ m.style.display = 'none'; }});
+  }}, 300);
+}}
+document.addEventListener('mouseover', function(e) {{
+  var trigger = e.target.closest ? e.target.closest('.doc-menu-trigger') : null;
+  var menu    = e.target.closest ? e.target.closest('.doc-menu-popup') : null;
+  if (trigger)    {{ clearTimeout(_docMenuHideTimer); _showDocMenu(trigger); }}
+  else if (menu)  {{ clearTimeout(_docMenuHideTimer); }}
+  else            {{ _hideDocMenusSoon(); }}
+}});
 
 function toggleDark() {{
   var body = document.body;
