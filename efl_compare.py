@@ -625,6 +625,182 @@ def parse_efl(pdf_path):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Manual EFLs (--manual-efl / --manual-efl-dir)
+#
+# Texas EFLs are a state-mandated standardized template (16 TAC 25.475), so a
+# locally-supplied EFL PDF carries everything a PUCT CSV row would otherwise
+# provide: REP/product name, contract term, termination fee, and the
+# 500/1,000/2,000 kWh average-price table. This best-effort extracts those
+# fields so a manual EFL can be dropped into the same `plans` pipeline as
+# PUCT plans. Header layout is NOT fully standardized across REPs (seen two
+# distinct layouts across Tara Energy and Discount Power samples), so each
+# field tries multiple patterns and falls back to a placeholder + warning
+# rather than failing outright -- except the rate itself, which is never
+# guessed (see _build_manual_plan).
+# ---------------------------------------------------------------------------
+
+_CENTS_CHARS = r"[¢c�]"   # matches the existing CENTS pattern's char class
+
+
+def _extract_manual_efl_metadata(text: str) -> dict:
+    """
+    Best-effort extraction of REP/product/term/ETF/TDU/price-table metadata
+    from a standalone EFL's mandated header and "Other Key Terms" sections.
+    Returns a dict; any field that can't be found is simply omitted.
+    """
+    out = {}
+
+    # ── Header block: REP name + product name ───────────────────────────
+    # Anchored on the mandated "Electricity Facts Label (EFL)" title line,
+    # then read forward. Two known layouts:
+    #   A) one combined line: "REP Name - Fixed Rate Product: Product Name"
+    #   B) two separate lines: REP name, then product name
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    try:
+        efl_idx = next(i for i, ln in enumerate(lines)
+                       if "electricity facts label" in ln.lower())
+        candidates = lines[efl_idx + 1: efl_idx + 5]
+    except StopIteration:
+        candidates = []
+
+    combined_m = None
+    for ln in candidates:
+        m = re.match(r"(.+?)\s*-\s*(?:Fixed|Variable)?\s*Rate\s*Product\s*:\s*(.+)$", ln, re.I)
+        if m:
+            combined_m = m
+            break
+    if combined_m:
+        out["rep"]     = combined_m.group(1).strip()
+        out["product"] = combined_m.group(2).strip()
+    elif len(candidates) >= 2:
+        out["rep"]     = candidates[0]
+        out["product"] = candidates[1]
+
+    # ── TDU / service area ───────────────────────────────────────────────
+    m = (re.search(r"(?:For\s+)?Service\s+Area\s*:\s*([\w][\w .]*)", text, re.I) or
+         re.search(r"([A-Za-z][\w .]*?)\s*(?:Electric Delivery)?\s*service area", text, re.I))
+    if m:
+        out["tdu"] = m.group(1).strip()
+
+    # ── Contract term ────────────────────────────────────────────────────
+    m = re.search(r"Contract\s+Term\D{0,60}?(\d+)\s*months?", text, re.I)
+    if m:
+        out["term_months"] = int(m.group(1))
+
+    # ── Early termination fee ───────────────────────────────────────────
+    # Answer text can appear before or after the question label depending on
+    # how the PDF's table layout gets flattened, so search a symmetric
+    # window around the keyword rather than assuming an order.
+    m = re.search(r".{0,250}(?:termination fee|early termination).{0,250}", text, re.I | re.S)
+    if m:
+        fee_m = re.search(r"\$\s*([\d,]+(?:\.\d{1,2})?)", m.group(0))
+        if fee_m:
+            out["etf_dollars"] = float(fee_m.group(1).replace(",", ""))
+
+    # ── Average price per kWh table (500 / 1,000 / 2,000 kWh) ───────────
+    m = re.search(
+        r"Average\s+price\s+per\s+(?:kwh|kilowatt-hour)\D{0,10}"
+        rf"([\d.]+)\s*{_CENTS_CHARS}\D{{0,40}}?([\d.]+)\s*{_CENTS_CHARS}\D{{0,40}}?([\d.]+)\s*{_CENTS_CHARS}",
+        text, re.I)
+    if m:
+        out["kwh500"]  = float(m.group(1)) / 100
+        out["kwh1000"] = float(m.group(2)) / 100
+        out["kwh2000"] = float(m.group(3)) / 100
+
+    # ── Renewable content ────────────────────────────────────────────────
+    # Two known phrasings, both anchored on the "Renewable Content" label:
+    #   Tara-style:           "Renewable Content        22%"
+    #   Discount Power-style: "Renewable Content        This product is 22% renewable."
+    # A short bounded window + first-match keeps this from matching the
+    # unrelated "statewide average for renewable content is N%" line that
+    # follows shortly after in both templates.
+    m = re.search(r"Renewable\s+Content\D{0,60}?([\d.]+)\s*%", text, re.I)
+    if m:
+        out["renewable_pct"] = float(m.group(1))
+
+    return out
+
+
+def _build_manual_plan(pdf_path: Path, idx: int, tdu_label: str = "Oncor"):
+    """
+    Parse a local EFL PDF and construct a synthetic PUCT-CSV-shaped plan dict
+    so it can be merged into the same `plans` list the rest of the pipeline
+    consumes. Returns (plan_dict, efl_result, warnings) -- warnings is a list
+    of human-readable strings for any field that fell back to a placeholder.
+    Never fabricates the rate itself; if that can't be determined the caller
+    (main()) excludes the plan after the normal rate-calc pass runs.
+    """
+    warnings_ = []
+    pid  = f"manual-{idx}"
+    efl  = parse_efl(pdf_path)
+    text = efl.get("raw_text", "")
+    meta = _extract_manual_efl_metadata(text)
+
+    stem    = pdf_path.stem
+    rep     = meta.get("rep")     or stem
+    product = meta.get("product") or stem
+    if not meta.get("rep") or not meta.get("product"):
+        warnings_.append(
+            f"{pdf_path.name}: could not parse REP/Product name from the EFL header "
+            f"-- using filename as a placeholder"
+        )
+
+    term = meta.get("term_months")
+    if term is None:
+        term = 0
+        warnings_.append(f"{rep} / {product}: could not parse contract term -- shown as 0")
+
+    if "etf_dollars" in meta:
+        etf_display = f"${meta['etf_dollars']:.0f}"
+    else:
+        etf_display = "Unknown"
+        warnings_.append(f"{rep} / {product}: could not parse early termination fee")
+
+    tdu_name = meta.get("tdu")
+    if tdu_name and tdu_label.lower() not in tdu_name.lower():
+        warnings_.append(
+            f"{rep} / {product}: EFL states service area '{tdu_name}', this run compares "
+            f"{tdu_label} -- rate math assumes {tdu_label} delivery charges, verify manually"
+        )
+    elif not tdu_name:
+        warnings_.append(
+            f"{rep} / {product}: could not confirm TDU service area from the EFL -- "
+            f"assuming {tdu_label} (this run's TDU)"
+        )
+
+    if "renewable_pct" in meta:
+        rnw_display = f"{meta['renewable_pct']:g}"
+    else:
+        rnw_display = "?"
+        warnings_.append(f"{rep} / {product}: could not parse renewable content percentage")
+
+    has_bill_credits = bool(efl.get("bill_credits"))
+
+    plan = {
+        "[RepCompany]":          rep,
+        "[Product]":             product,
+        "[TermValue]":           str(term),
+        "[CancelFee]":           etf_display,
+        "[Renewable]":           rnw_display,
+        "[MinUsageFeesCredits]": "TRUE" if has_bill_credits else "FALSE",
+        "[FactsURL]":            pdf_path.resolve().as_uri(),
+        "[idKey]":               pid,
+        "[kwh500]":              str(meta["kwh500"])  if "kwh500"  in meta else "",
+        "[kwh1000]":             str(meta["kwh1000"]) if "kwh1000" in meta else "",
+        "[kwh2000]":             str(meta["kwh2000"]) if "kwh2000" in meta else "",
+        "[Fees/Credits]":        "",   # no PUCT-structured field exists for a manual plan
+        "[TduCompanyName]":      TDU_FILTER,
+        "[Fixed]":               "1",
+        "[PrePaid]":             "False",
+        "[TimeOfUse]":           "False",
+        "[Language]":            "English",
+        "_manual":               True,
+        "_manual_source":        str(pdf_path),
+    }
+    return plan, efl, warnings_
+
+
 def _fetch_efl_with_browser(url, cache, pid=None):
     """
     Use Playwright/Chromium to fetch an EFL that requires JavaScript rendering.
@@ -1208,6 +1384,19 @@ def parse_args():
                      help="Also save timestamped copies of output files alongside the 'latest' "
                           "versions (e.g. plans_20260619_143022.html)")
 
+    grp = p.add_argument_group("manual EFLs")
+    grp.add_argument("--manual-efl", action="append", default=[], metavar="PATH",
+                     help="Path to a local EFL PDF to include alongside PUCT plans "
+                          "(e.g. a retention/renewal offer not listed on powertochoose.org). "
+                          "Repeatable.")
+    grp.add_argument("--manual-efl-dir", action="append", default=[], metavar="DIR",
+                     help="Directory of local EFL PDFs to include (non-recursive, *.pdf). "
+                          "Repeatable.")
+    grp.add_argument("--no-puct", action="store_true",
+                     help="Skip fetching/downloading PUCT plans entirely -- evaluate only "
+                          "--manual-efl / --manual-efl-dir plans. Requires at least one; "
+                          "--zip is not required when this is set.")
+
     grp = p.add_argument_group("rate calculation")
     grp.add_argument("--no-enrollment-credits", action="store_true",
                      help="Exclude enrollment-based credits (auto-pay, paperless, etc.) "
@@ -1246,8 +1435,13 @@ def main():
     EFL_CACHE.mkdir(exist_ok=True)
     _t_start = time.perf_counter()
 
-    if not args.zip:
-        print("ERROR: zip code is required. Pass --zip or set the EFL_ZIP environment variable.")
+    if not args.zip and not args.no_puct:
+        print("ERROR: zip code is required. Pass --zip or set the EFL_ZIP environment variable "
+              "(or pass --no-puct to compare only --manual-efl plans).")
+        raise SystemExit(1)
+
+    if args.no_puct and not (args.manual_efl or args.manual_efl_dir):
+        print("ERROR: --no-puct requires at least one --manual-efl or --manual-efl-dir.")
         raise SystemExit(1)
 
     # Rebuild USAGE_TIERS and COMPARE_TIER from args
@@ -1274,23 +1468,61 @@ def main():
 
     print("=" * 80)
     print("  powertochoose.org EFL Comparator")
-    print(f"  Zip: {args.zip}  |  TDU: Oncor  |  Fixed plans only  |  excl. taxes")
+    print(f"  Zip: {args.zip or '(none, --no-puct)'}  |  TDU: Oncor  |  Fixed plans only  |  excl. taxes")
     if args.no_llm:
         print("  WARNING: --no-llm active -- bill-credit and some EFL-failed plan rates are less accurate")
     print("=" * 80)
 
     tdu   = get_tdu_rates()
-    plans = fetch_plans(args.zip)
-    _prune_efl_cache()
+    plans = [] if args.no_puct else fetch_plans(args.zip)
+    if not args.no_puct:
+        _prune_efl_cache()
+
+    # ── Manual EFLs: local PDFs merged in alongside PUCT plans ──────────────
+    manual_paths = list(args.manual_efl)
+    for d in args.manual_efl_dir:
+        dir_path = Path(d)
+        if not dir_path.is_dir():
+            print(f"  WARNING: --manual-efl-dir not found, skipping: {d}")
+            continue
+        manual_paths.extend(str(p) for p in sorted(dir_path.glob("*.pdf")))
+
+    manual_plans        = []
+    manual_efl_results  = {}
+    manual_warnings     = []
+    for i, mpath in enumerate(manual_paths, 1):
+        mp = Path(mpath)
+        if not mp.is_file():
+            print(f"  WARNING: --manual-efl path not found, skipping: {mpath}")
+            continue
+        m_plan, m_efl, m_warns = _build_manual_plan(mp, i)
+        manual_plans.append(m_plan)
+        manual_efl_results[m_plan["[idKey]"]] = m_efl
+        manual_warnings.extend(m_warns)
+
+    if manual_plans:
+        print(f"\n  {len(manual_plans)} manual EFL(s) loaded from local file(s).")
+        for w in manual_warnings:
+            print(f"    [MANUAL EFL] {w}")
+
+    plans += manual_plans
+
+    if not plans:
+        print("\nERROR: no plans to compare (--no-puct set and no manual EFLs found).")
+        raise SystemExit(1)
+
+    # Downloadable subset -- manual plans are read directly from disk and never
+    # go through the fetch/cache/freshness machinery below.
+    _downloadable_plans = [p for p in plans if not p.get("_manual")]
 
     # Load existing EFL cache metadata and optionally check freshness via HEAD
     global _cache_meta, _CACHE_MIN_TTL_HOURS
     _CACHE_MIN_TTL_HOURS = args.cache_ttl_hours
     _cache_meta = _load_meta()
-    if not args.no_cache_check and _cache_meta:
+    if not args.no_cache_check and _cache_meta and _downloadable_plans:
         pid_to_url = {
             plan["[idKey]"]: (plan.get("[FactsURL]") or "").strip()
-            for plan in plans
+            for plan in _downloadable_plans
         }
         print("  Checking EFL cache freshness...", end="", flush=True)
         invalidated = _check_cache_freshness(pid_to_url)
@@ -1302,15 +1534,17 @@ def main():
     # ── Phase 1: parallel EFL downloads and PDF parsing ─────────────────────
     # Network I/O and PDF text extraction are safe to parallelize -- each plan
     # writes to its own unique cache file. LLM calls stay in the serial phase.
-    _any_missing = any(
-        str(p["[idKey]"]) not in _cache_meta
-        for p in plans
-    )
-    _phase1_verb = "Downloading & parsing" if _any_missing else "Parsing"
-    print(f"\n{_phase1_verb} {len(plans)} EFLs"
-          f" (up to {MAX_WORKERS} parallel, cached in efls_cache/)...")
+    efl_results: dict[str, object] = dict(manual_efl_results)   # idKey -> parse_efl result or None
 
-    efl_results: dict[str, object] = {}   # idKey -> parse_efl result or None
+    if _downloadable_plans:
+        _any_missing = any(
+            str(p["[idKey]"]) not in _cache_meta
+            for p in _downloadable_plans
+        )
+        _phase1_verb = "Downloading & parsing" if _any_missing else "Parsing"
+        print(f"\n{_phase1_verb} {len(_downloadable_plans)} EFLs"
+              f" (up to {MAX_WORKERS} parallel, cached in efls_cache/)...")
+
     _progress_lock = threading.Lock()
     _done = [0]
 
@@ -1318,12 +1552,12 @@ def main():
         result = download_and_parse_efl(plan)
         with _progress_lock:
             _done[0] += 1
-            sys.stdout.write(f"\r  {_done[0]:>3}/{len(plans)} downloaded")
+            sys.stdout.write(f"\r  {_done[0]:>3}/{len(_downloadable_plans)} downloaded")
             sys.stdout.flush()
         return plan["[idKey]"], result
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(_download_one, p): p for p in plans}
+        futures = {pool.submit(_download_one, p): p for p in _downloadable_plans}
         for fut in as_completed(futures):
             try:
                 pid, efl = fut.result()
@@ -1573,6 +1807,7 @@ def main():
             "bill_credits":           [dict(c) for c in credits],
             "tiers":     tiers,
             "src":       src,
+            "manual":    bool(plan.get("_manual")),
             "facts_url":     (plan.get("[FactsURL]")      or "").strip(),
             "fees_credits":  (plan.get("[Fees/Credits]")  or "").strip(),
             "special_terms": (plan.get("[SpecialTerms]")  or "").strip(),
@@ -1592,6 +1827,15 @@ def main():
         print("\nCredit source disagreements (EFL regex vs CSV LLM -- LLM re-parsed EFL used):")
         for w in warnings:
             print(f"  [!] {w}")
+
+    if manual_plans:
+        _result_pids    = {r["pid"] for r in results}
+        _dropped_manual = [p for p in manual_plans if p["[idKey]"] not in _result_pids]
+        if _dropped_manual:
+            print("\n[MANUAL EFL] Could not determine a usable rate for the following -- excluded")
+            print("  rather than shown with a guessed number. Check the PDF manually:")
+            for p in _dropped_manual:
+                print(f"    - {p['[RepCompany]']} / {p['[Product]']}  (source: {p['_manual_source']})")
 
     # Sort: longer term first, then cheapest at compare tier within each term
     results.sort(key=lambda r: (-r["term"], r["tiers"].get(COMPARE_TIER, 999)))
@@ -1635,6 +1879,7 @@ def main():
 
         flags_txt = ""
         if r["has_crd"]: flags_txt += "¢"
+        if r["manual"]:  flags_txt += " M"
         if fn_ref:        flags_txt += f" {fn_ref}"
         rows.append([
             r["provider"][:28],
@@ -1652,7 +1897,7 @@ def main():
         print(tabulate(rows, headers=headers, tablefmt="simple", floatfmt=".2f"))
         print(f"""
 TDU charges applied: ${tdu['fixed_mo']:.2f}/mo fixed + {tdu['per_kwh']*100:.4f}¢/kWh  (same for all providers)
-Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit | [n]=fee/credit footnote
+Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit | M=manually-supplied EFL (not PUCT-verified) | [n]=fee/credit footnote
 All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
 {f"Personal tiers: {', '.join(str(k) for k in USAGE_TIERS if k not in _EFL_TIERS)} kWh  (standard EFL tiers: 500 / 1,000 / 2,000)" if any(k not in _EFL_TIERS for k in USAGE_TIERS) else "Standard EFL tiers only: 500 / 1,000 / 2,000 kWh"}
 """)
@@ -1704,6 +1949,7 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
                     "renewable_pct":         r["rnw"],
                     "has_bill_credit":       r["has_crd"],
                     "src":                   r["src"],
+                    "manual":                r["manual"],
                     "energy_charge_cents":   r["ec_cents"],
                     "base_charge_dollars":   r["bc"],
                     "tdu_bundled":           r["tdu_bundled"],
@@ -1831,6 +2077,16 @@ def _write_html(results, tdu, zip_code, out_path=None):
                 f'font-size:0.75em;font-weight:700;padding:0px 4px;border-radius:4px;'
                 f'vertical-align:middle;user-select:none;line-height:1.4">'
                 f'&#9888; ${one_time:.0f}</span>'
+            )
+        if r["manual"]:
+            flags += (
+                ' <span title="Manually-supplied EFL — not fetched from or verified against '
+                'powertochoose.org; metadata (term/ETF/renewable) is best-effort extracted '
+                'from the PDF itself" '
+                'style="cursor:help;display:inline-block;background:#7c4dcc;color:#fff;'
+                'font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;'
+                'min-width:1.0em;text-align:center;'
+                'vertical-align:middle;user-select:none;line-height:1.4">M</span>'
             )
 
         tier_tds = "".join(f'<td>{r["tiers"][k]:.2f}</td>' for k in USAGE_TIERS)
@@ -2181,7 +2437,7 @@ function toggleDark() {{
   <th title="Contract term in months">Mo</th>
   <th title="Early termination fee">ETF</th>
   <th title="Renewable energy content percentage">Rnw%</th>
-  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details">Flags</th>
+  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org">Flags</th>
   {tier_ths_titled}
   <th title="Rate difference vs best plan with longer contract, at {ct_label} kWh/month">vs best longer@{ct_label}</th>
 </tr>
@@ -2192,7 +2448,8 @@ function toggleDark() {{
   <span class="swatch src-efl"></span> EFL — exact (legal document) &nbsp;
   <span class="swatch src-llm"></span> LLM — high accuracy &nbsp;
   <span class="swatch src-api"></span> API — estimated (less accurate) &nbsp;
-  <span style="display:inline-block;background:#e6a817;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">&#162;</span> Bill-credit plan — rate only valid near the credit threshold kWh
+  <span style="display:inline-block;background:#e6a817;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">&#162;</span> Bill-credit plan — rate only valid near the credit threshold kWh &nbsp;
+  <span style="display:inline-block;background:#7c4dcc;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">M</span> Manually-supplied EFL — not fetched from or verified against powertochoose.org
 </div>
 </body>
 </html>

@@ -8,7 +8,7 @@ Configured for the **Oncor service area**. Set your zip code via `--zip` or the 
 
 ## What It Does
 
-1. **Fetches plans** from powertochoose.org via CSV export — all Oncor fixed-rate English plans (TimeOfUse and prepaid excluded)
+1. **Fetches plans** from powertochoose.org via CSV export — all Oncor fixed-rate English plans (TimeOfUse and prepaid excluded). Optionally merge in or replace this with your own locally-supplied EFLs — see [Manual EFLs](#manual-efls) below.
 2. **Downloads EFL PDFs** in parallel (10 at a time), cached locally with HTTP HEAD freshness checking
 3. **Parses rate components** from each EFL using PyMuPDF with spatial text sorting:
    - Regex extraction for energy charge, base charge, and bill credits
@@ -27,6 +27,7 @@ Configured for the **Oncor service area**. Set your zip code via `--zip` or the 
    - ¢ badge for bill-credit plans (advertised rate only valid near credit threshold)
    - ℹ badge with fee/credit details on hover
    - ⚠ badge for plans with one-time setup fees
+   - `M` badge (violet) for manually-supplied EFLs — not fetched from or verified against powertochoose.org
    - **vs best longer column** — color-coded delta (green/amber/red) at your compare tier, with styled hover tooltip showing which plan is being compared and its rate
    - Plan name links open the EFL PDF in a new tab
 
@@ -125,6 +126,14 @@ EFL_ZIP=YOUR_ZIP EFL_TIERS=LOW,MID,HIGH py3 efl_compare.py
 | `--json [PATH]` | off | Write full results to JSON |
 | `--timestamped` | off | Also save a timestamped copy alongside each output file (e.g. `plans_20260619_143022.html`) |
 
+**Manual EFLs** — see [Manual EFLs](#manual-efls) for details
+
+| Flag | Default | Description |
+|---|---|---|
+| `--manual-efl PATH` | none | Local EFL PDF to include alongside PUCT plans. Repeatable. |
+| `--manual-efl-dir DIR` | none | Directory of local EFL PDFs to include (non-recursive, `*.pdf`). Repeatable. |
+| `--no-puct` | off | Skip fetching/downloading PUCT plans entirely — evaluate only manually-supplied EFLs. Requires at least one; `--zip` not required when set. |
+
 **Rate calculation**
 
 | Flag | Default | Description |
@@ -172,6 +181,28 @@ py -3.12 efl_compare.py --no-llm
 py -3.12 efl_compare.py --no-enrollment-credits
 ```
 
+**Include a locally-supplied EFL not listed on powertochoose.org:**
+```
+py -3.12 efl_compare.py --manual-efl-dir ./my_offers
+```
+
+**Evaluate only your own EFLs, skipping the PUCT fetch entirely:**
+```
+py -3.12 efl_compare.py --no-puct --manual-efl-dir ./my_offers
+```
+
+---
+
+## Manual EFLs
+
+Not every plan a REP offers is listed on powertochoose.org — retention or renewal offers given directly to an existing customer (e.g. over the phone) commonly aren't. `--manual-efl` / `--manual-efl-dir` let you drop a local EFL PDF into the comparison so it's ranked alongside everything else, without needing it to be on PUCT at all.
+
+Texas EFLs are a state-mandated standardized disclosure (16 TAC §25.475), so a locally-supplied PDF carries everything a PUCT CSV row would otherwise provide: REP/product name, contract term, early termination fee, renewable content %, and the 500/1,000/2,000 kWh average-price table. The script extracts these directly from the EFL text — no PUCT lookup needed.
+
+Header layout isn't fully standardized across REPs, though, so extraction is best-effort per field. If a field can't be found, the plan is still included with a placeholder (filename for REP/product, `0` for term, `Unknown` for the termination fee, `?` for renewable %) and a printed `[MANUAL EFL]` warning naming exactly what wasn't found — but the **rate itself is never guessed**. If the actual energy charge and credit structure can't be determined from the EFL text at all, that plan is excluded from the results with a loud warning telling you to check the PDF, rather than shown with a fabricated number.
+
+Manually-supplied plans are parsed directly from disk and skip the PUCT download/cache-freshness machinery entirely. They're marked with a violet `M` badge in the Flags column so they're never mistaken for a PUCT-verified plan.
+
 ---
 
 ## Understanding the Output
@@ -195,6 +226,7 @@ Open `plans_latest.html` in any browser. Fully self-contained — no external de
 - `¢` — bill-credit plan: advertised rate only valid near the credit threshold kWh
 - `ℹ` — hover to see the fee/credit description from PUCT's data
 - `⚠ $X` — one-time setup fee (not included in the displayed rates)
+- `M` — manually-supplied EFL (see [Manual EFLs](#manual-efls)) — not fetched from or verified against powertochoose.org
 
 **vs best longer column:** Color-coded rate delta vs the best plan with a strictly longer contract, at your compare tier. Hover anywhere in the cell for a styled tooltip showing which plan is being compared and its rate. Green = small delta (<1¢), amber = moderate (1–3¢), red = large (>3¢).
 
