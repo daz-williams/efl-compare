@@ -2337,9 +2337,9 @@ def _write_html(results, tdu, zip_code, out_path=None):
     --text-mid:  #777777;
     --hover:     rgba(0,0,0,0.06);
     --link:      #0066cc;
-    --row-efl:   #d4edda;
-    --row-llm:   #fff3cd;
-    --row-api:   #f8d7da;
+    --row-efl:   rgba(22, 163, 74, 0.10);
+    --row-llm:   rgba(230, 168, 23, 0.14);
+    --row-api:   rgba(220, 38, 38, 0.08);
     --grp-bg:    #343a40;
     --grp-text:  #ffffff;
     --sw-border: #cccccc;
