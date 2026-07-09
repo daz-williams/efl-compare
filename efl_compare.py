@@ -350,6 +350,15 @@ def _find_energy_charge(text):
 
     SKIP = re.compile(r"minimum|credit|residential\s+usage", re.I)
 
+    # Lines to exclude from the multi-line lookahead window (see below). Some
+    # EFLs (e.g. AP Gas & Electric) state the energy rate as "... per kWh:
+    # VALUE¢" -- label before value -- which CENTS below cannot match (it
+    # requires VALUE-then-kWh order). When that happens, the lookahead would
+    # otherwise pull in the next line's TDU delivery-charge rate (which IS in
+    # matchable VALUE-then-kWh order) and silently substitute it for the
+    # REP's energy charge. Mirrors the skip already applied in _find_base_charge.
+    LOOKAHEAD_SKIP = re.compile(r"delivery|\btdu\b|transmission\s+and\s+distribution", re.I)
+
     # Pattern: cents value [unit] [per] kWh
     # Covers ¢, c, � (replacement char for ¢), cents, and duplicates
     CENTS = re.compile(
@@ -379,7 +388,7 @@ def _find_energy_charge(text):
             # Two-line lookahead covers TriEagle ("Energy Charge: Per kWh (¢)\nPrice\nAll kWh 15.7000¢").
             combined = line
             for _j in range(1, 3):
-                if i + _j < len(lines):
+                if i + _j < len(lines) and not LOOKAHEAD_SKIP.search(lines[i + _j]):
                     combined += " " + lines[i + _j]
 
             # 1. Cents format (most common)
