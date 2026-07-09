@@ -1880,7 +1880,14 @@ def main():
     # Build output table
     tier_hdrs = [f"{k:,}" for k in USAGE_TIERS]
     ct_label  = f"{COMPARE_TIER/1000:.1f}k".rstrip('0').rstrip('.')
-    headers   = ["Provider", "Plan", "Mo", "ETF", "Rnw%", "Flags"] + tier_hdrs + [f"vs best longer@{ct_label}"]
+    headers   = ["Provider", "Plan", "Mo", "ETF", "Rnw%", "Flags", "Energy"] + tier_hdrs + [f"vs best longer@{ct_label}"]
+
+    def _energy_price_str(ec_cents, bc_dollars):
+        """REP's own energy charge + base charge, excluding TDU delivery charges."""
+        s = f"{ec_cents:.2f}¢"
+        if bc_dollars:
+            s += f" + ${bc_dollars:.2f}/mo"
+        return s
 
     rows      = []
     cur_term  = None
@@ -1921,6 +1928,7 @@ def main():
             r["etf"],
             f"{r['rnw']}%",
             f"{r['src'].upper()} {flags_txt}".strip(),
+            _energy_price_str(r["ec_cents"], r["bc"]),
             *[f"{r['tiers'][k]:.2f}" for k in USAGE_TIERS],
             delta,
         ])
@@ -2088,7 +2096,14 @@ def _write_html(results, tdu, zip_code, out_path=None):
     }
 
     ct_label      = f"{COMPARE_TIER/1000:.1f}k".rstrip('0').rstrip('.')   # e.g. "1k"
-    n_cols        = 7 + len(USAGE_TIERS) + 1   # fav + Provider + Plan + Mo + ETF + Rnw% + Flags + tiers + delta
+    n_cols        = 8 + len(USAGE_TIERS) + 1   # fav + Provider + Plan + Mo + ETF + Rnw% + Flags + Energy + tiers + delta
+
+    def _energy_price_str(ec_cents, bc_dollars):
+        """REP's own energy charge + base charge, excluding TDU delivery charges."""
+        s = f"{ec_cents:.2f}¢"
+        if bc_dollars:
+            s += f" + ${bc_dollars:.2f}/mo"
+        return s
     tier_ths      = "".join(f"<th>{k:,}</th>" for k in USAGE_TIERS)
     tier_ths_titled = "".join(
         f'<th title="Effective rate ¢/kWh at {k:,} kWh/month usage">{k:,}</th>'
@@ -2223,6 +2238,7 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'<td>{r["term"]}</td><td>{r["etf"]}</td>'
             f'<td>{r["rnw"]}%</td>'
             f'<td style="text-align:center;white-space:nowrap">{flags}</td>'
+            f'<td style="white-space:nowrap">{_energy_price_str(r["ec_cents"], r["bc"])}</td>'
             f'{tier_tds}{delta_td}'
             f'</tr>\n'
         )
@@ -2268,6 +2284,8 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'<div class="top-card-plan">{_pname}</div>'
             f'<div class="top-card-rate">{_rate:.2f}¢<span>@ {COMPARE_TIER:,} kWh</span></div>'
             f'<div class="top-card-meta">{_r["term"]}-month &nbsp;·&nbsp; ETF: {_r["etf"] or "$0"}</div>'
+            f'<div class="top-card-meta" title="Energy charge + base charge only, excluding TDU delivery charges">'
+            f'Energy: {_energy_price_str(_r["ec_cents"], _r["bc"])}</div>'
             f'</div></div>\n'
         )
     top3_html = f'<div class="top-picks-outer"><div class="top-picks">\n{cards}</div></div>'
@@ -2301,6 +2319,8 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'<div class="top-card-plan">{_cur_pname}</div>'
             f'<div class="top-card-rate">{_cur_rate:.2f}¢<span>@ {COMPARE_TIER:,} kWh</span></div>'
             f'<div class="top-card-meta">{_cur["term"]}-month &nbsp;·&nbsp; ETF: {_cur["etf"] or "$0"}</div>'
+            f'<div class="top-card-meta" title="Energy charge + base charge only, excluding TDU delivery charges">'
+            f'Energy: {_energy_price_str(_cur["ec_cents"], _cur["bc"])}</div>'
             f'<div class="top-card-meta" style="margin-top:4px">{_cur_savings}</div>'
             '</div></div>\n'
             '</div></div>'
@@ -2627,6 +2647,7 @@ function toggleDark() {{
   <th title="Early termination fee">ETF</th>
   <th title="Renewable energy content percentage">Rnw%</th>
   <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org&#10;CURRENT Your current plan">Flags</th>
+  <th title="REP's own energy charge + base charge, excluding TDU delivery charges">Energy</th>
   {tier_ths_titled}
   <th title="Rate difference vs best plan with longer contract, at {ct_label} kWh/month">vs best longer@{ct_label}</th>
 </tr>
