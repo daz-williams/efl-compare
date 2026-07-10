@@ -1840,6 +1840,9 @@ def main():
             "facts_url":     (plan.get("[FactsURL]")      or "").strip(),
             "terms_url":     (plan.get("[TermsURL]")      or "").strip(),
             "yrac_url":      (plan.get("[YRACURL]")       or "").strip(),
+            "enroll_url":    (plan.get("[EnrollURL]")     or "").strip(),
+            "enroll_phone":  (plan.get("[EnrollPhone]")   or "").strip(),
+            "website_url":   (plan.get("[Website]")       or "").strip(),
             "fees_credits":  (plan.get("[Fees/Credits]")  or "").strip(),
             "special_terms": (plan.get("[SpecialTerms]")  or "").strip(),
         })
@@ -2124,18 +2127,37 @@ def _write_html(results, tdu, zip_code, out_path=None):
             if url else r["plan"]
         )
 
-        # Terms of Service / YRAC — PUCT-only fields, so manual/current EFLs
-        # (no CSV row) simply won't have them; omit rather than placeholder.
-        # Shows whichever of the two is actually present -- a plan missing
-        # just one (rare, but seen in the wild) still gets the other link
-        # rather than losing both.
-        terms_url  = r.get("terms_url", "")
-        yrac_url   = r.get("yrac_url", "")
-        doc_links  = ""
+        # Terms of Service / YRAC / Enroll / Enroll Phone / Website — PUCT-only
+        # fields, so manual/current EFLs (no CSV row) simply won't have them;
+        # omit rather than placeholder. Shows whichever are actually present --
+        # a plan missing one or more (rare, but seen in the wild) still gets
+        # the rest rather than losing the whole menu.
+        terms_url    = r.get("terms_url", "")
+        yrac_url     = r.get("yrac_url", "")
+        enroll_url   = r.get("enroll_url", "")
+        enroll_phone = r.get("enroll_phone", "")
+        website_url  = r.get("website_url", "")
+
+        doc_links = ""
         if terms_url:
             doc_links += f'<a href="{terms_url}" target="_blank" title="Terms of Service">&#128196;</a>'
         if yrac_url:
             doc_links += f'<a href="{yrac_url}" target="_blank" title="Your Rights as a Customer (YRAC)">&#9878;</a>'
+
+        enroll_links = ""
+        if enroll_url:
+            enroll_links += f'<a href="{enroll_url}" target="_blank" title="Enroll in this plan">&#128722;</a>'
+        if enroll_phone:
+            tel = re.sub(r"[^\d+]", "", enroll_phone)
+            enroll_links += f'<a href="tel:{tel}" title="Call to enroll: {enroll_phone}">&#128222;</a>'
+        if website_url:
+            enroll_links += f'<a href="{website_url}" target="_blank" title="Provider website">&#127760;</a>'
+
+        if doc_links and enroll_links:
+            doc_links += '<span class="doc-menu-sep"></span>' + enroll_links
+        else:
+            doc_links += enroll_links
+
         docs_menu = (
             f'<span class="doc-menu-trigger">&#8943;</span>'
             f'<span class="doc-menu-popup">{doc_links}</span>'
@@ -2454,6 +2476,7 @@ def _write_html(results, tdu, zip_code, out_path=None):
     opacity: 0.85; transition: opacity 0.1s, transform 0.1s; display: inline-block;
   }}
   .doc-menu-popup a:hover {{ opacity: 1; transform: scale(1.15); }}
+  .doc-menu-sep {{ width: 1px; align-self: stretch; background: var(--border); }}
   /* ── Theme toggle button ── */
   #theme-btn {{
     position: absolute; top: 14px; right: 18px;
