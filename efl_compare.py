@@ -1927,8 +1927,10 @@ def main():
                 _footnotes[fc] = _footnote_ctr
             fn_ref = f"[{_footnotes[fc]}]"
 
+        _credits_tt = r.get("bill_credits", [])
         flags_txt = ""
-        if r["has_crd"]: flags_txt += "¢"
+        if any(c.get("threshold_kwh", 0) > 0 for c in _credits_tt): flags_txt += "¢"
+        if any(c.get("requires_enrollment", False) for c in _credits_tt): flags_txt += " R"
         if r["manual"]:  flags_txt += " M"
         if r["current"]: flags_txt += " <CURRENT>"
         if fn_ref:        flags_txt += f" {fn_ref}"
@@ -1949,7 +1951,7 @@ def main():
         print(tabulate(rows, headers=headers, tablefmt="simple", floatfmt=".2f"))
         print(f"""
 TDU charges applied: ${tdu['fixed_mo']:.2f}/mo fixed + {tdu['per_kwh']*100:.4f}¢/kWh  (same for all providers)
-Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit | M=manually-supplied EFL (not PUCT-verified) | <CURRENT>=your current plan | [n]=fee/credit footnote
+Flags: [EFL]=exact legal doc | [LLM]=high-accuracy | [API]=estimated | ¢=bill-credit (usage threshold) | R=requires ongoing enrollment (e.g. autopay) to keep rate | M=manually-supplied EFL (not PUCT-verified) | <CURRENT>=your current plan | [n]=fee/credit footnote
 All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
 {f"Personal tiers: {', '.join(str(k) for k in USAGE_TIERS if k not in _EFL_TIERS)} kWh  (standard EFL tiers: 500 / 1,000 / 2,000)" if any(k not in _EFL_TIERS for k in USAGE_TIERS) else "Standard EFL tiers only: 500 / 1,000 / 2,000 kWh"}
 """)
@@ -2179,7 +2181,8 @@ def _write_html(results, tdu, zip_code, out_path=None):
             f'style="font-size:0.75em;cursor:default;'
             f'font-weight:bold;user-select:none">[{src.upper()}]</span>'
         )
-        if r["has_crd"]:
+        _credits = r.get("bill_credits", [])
+        if any(c.get("threshold_kwh", 0) > 0 for c in _credits):
             flags += (
                 ' <span title="Bill-credit plan — advertised rate only applies near '
                 'the credit threshold kWh; rates shown reflect actual cost at each tier" '
@@ -2187,6 +2190,15 @@ def _write_html(results, tdu, zip_code, out_path=None):
                 'font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;'
                 'min-width:1.0em;text-align:center;'
                 'vertical-align:middle;user-select:none;line-height:1.4">&#162;</span>'
+            )
+        if any(c.get("requires_enrollment", False) for c in _credits):
+            flags += (
+                ' <span title="Rate assumes maintaining a required ongoing enrollment '
+                '(e.g. autopay, paperless billing) — losing that enrollment raises your rate" '
+                'style="cursor:help;display:inline-block;background:#a35a7d;color:#fff;'
+                'font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;'
+                'min-width:1.0em;text-align:center;'
+                'vertical-align:middle;user-select:none;line-height:1.4">&#8635;</span>'
             )
         fees = r.get("fees_credits", "")
         if fees:
@@ -2763,7 +2775,7 @@ function toggleDark() {{
   <th title="Contract term in months">Mo</th>
   <th title="Early termination fee">ETF</th>
   <th title="Renewable energy content percentage">Rnw%</th>
-  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org&#10;CURRENT Your current plan">Flags</th>
+  <th title="[EFL] green=exact from legal document | [LLM] amber=high-accuracy extraction | [API] red=estimated from CSV price&#10;&#162; Bill-credit plan: low rate only valid near credit threshold kWh&#10;&#8635; Rate requires maintaining an enrollment (e.g. autopay) to keep the credit&#10;&#8505; Hover for fee/credit details&#10;M Manually-supplied EFL: not from/verified against powertochoose.org&#10;CURRENT Your current plan">Flags</th>
   <th title="REP's own energy charge + base charge, excluding TDU delivery charges">Energy</th>
   {tier_ths_titled}
   <th title="Rate difference vs best plan with longer contract, at {ct_label} kWh/month">vs best longer@{ct_label}</th>
@@ -2776,6 +2788,7 @@ function toggleDark() {{
   <span class="swatch src-llm"></span> LLM — high accuracy &nbsp;
   <span class="swatch src-api"></span> API — estimated (less accurate) &nbsp;
   <span style="display:inline-block;background:#e6a817;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">&#162;</span> Bill-credit plan — rate only valid near the credit threshold kWh &nbsp;
+  <span style="display:inline-block;background:#a35a7d;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">&#8635;</span> Requires maintaining an enrollment (e.g. autopay) to keep the credit &nbsp;
   <span style="display:inline-block;background:#7c4dcc;color:#fff;font-size:0.85em;font-weight:700;padding:0px 4px;border-radius:4px;vertical-align:middle;line-height:1.4">M</span> Manually-supplied EFL — not fetched from or verified against powertochoose.org &nbsp;
   <span style="display:inline-block;background:#0d9488;color:#fff;font-size:0.75em;font-weight:700;padding:0px 5px;border-radius:4px;vertical-align:middle;line-height:1.4">CURRENT</span> Your current plan
 </div>
