@@ -132,6 +132,7 @@ SORTING AND OUTPUT
 
 import argparse
 import csv
+import hashlib
 import json
 import time
 import io
@@ -741,7 +742,14 @@ def _build_manual_plan(pdf_path: Path, idx: int, tdu_label: str = "Oncor"):
     (main()) excludes the plan after the normal rate-calc pass runs.
     """
     warnings_ = []
-    pid  = f"manual-{idx}"
+    # Hash the filename (not idx) so a plan's identity -- and its persisted
+    # localStorage favorite -- survives files being added/removed/reordered
+    # in --manual-efl-dir between runs. The current-plan slot is always
+    # singular, so it keeps a fixed, human-readable pid instead.
+    if idx == "current":
+        pid = "manual-current"
+    else:
+        pid = "manual-" + hashlib.md5(pdf_path.name.encode("utf-8")).hexdigest()[:10]
     efl  = parse_efl(pdf_path)
     text = efl.get("raw_text", "")
     meta = _extract_manual_efl_metadata(text)
@@ -2255,7 +2263,7 @@ def _write_html(results, tdu, zip_code, out_path=None):
         if is_best and not r["current"]: row_classes.append("best")
         if r["current"]:                 row_classes.append("current-row")
         return (
-            f'<tr class="{" ".join(row_classes)}">'
+            f'<tr class="{" ".join(row_classes)}" data-pid="{r["pid"]}">'
             f'{fav_td}'
             f'<td>{r["provider"]}</td><td>{plan_cell}{docs_menu}</td>'
             f'<td>{r["term"]}</td><td>{r["etf"]}</td>'
@@ -2489,6 +2497,29 @@ def _write_html(results, tdu, zip_code, out_path=None):
   #theme-btn:hover {{ background: var(--th-bg); color: var(--th-text); }}
 </style>
 <script>
+// Persisted UI state (favorites + group collapse state), scoped per zip code.
+// Chrome gives every distinct file:// path its own isolated localStorage, so
+// plans_latest.html naturally keeps this across reruns (same path every time)
+// while a --timestamped snapshot starts fresh the first time it's opened
+// (new path = new storage) -- no extra handling needed for that split.
+var _FAV_KEY = 'efl_favorites_{zip_code}';
+var _GRP_KEY = 'efl_group_state_{zip_code}';
+
+function _loadFavorites() {{
+  try {{ return new Set(JSON.parse(localStorage.getItem(_FAV_KEY) || '[]')); }}
+  catch (e) {{ return new Set(); }}
+}}
+function _saveFavorites(set) {{
+  localStorage.setItem(_FAV_KEY, JSON.stringify(Array.from(set)));
+}}
+function _loadGroupState() {{
+  try {{ return JSON.parse(localStorage.getItem(_GRP_KEY) || '{{}}'); }}
+  catch (e) {{ return {{}}; }}
+}}
+function _saveGroupState(obj) {{
+  localStorage.setItem(_GRP_KEY, JSON.stringify(obj));
+}}
+
 function toggleGroup(id) {{
   var tbody = document.getElementById(id);
   var arrow = document.getElementById(id + '-arrow');
@@ -2510,6 +2541,10 @@ function toggleGroup(id) {{
     arrow.innerHTML = '&#9660;';
     hdr.setAttribute('data-state', 'all');
   }}
+
+  var gs = _loadGroupState();
+  gs[id] = hdr.getAttribute('data-state');
+  _saveGroupState(gs);
 }}
 
 function toggleAll() {{
@@ -2545,12 +2580,20 @@ function toggleAll() {{
     th.innerHTML = '&#9660;';
     th.setAttribute('data-state', 'all');
   }}
+
+  var gs = {{}};
+  tbodies.forEach(function(tbody) {{
+    var hdr = document.getElementById(tbody.id + '-hdr');
+    if (hdr) gs[tbody.id] = hdr.getAttribute('data-state');
+  }});
+  _saveGroupState(gs);
 }}
 
 function toggleHeart(td, event) {{
   event.stopPropagation();
   var row   = td.parentElement;
   var tbody = row.parentElement;
+  var pid   = row.getAttribute('data-pid');
 
   if (row.classList.contains('fav')) {{
     row.classList.remove('fav');
@@ -2561,13 +2604,63 @@ function toggleHeart(td, event) {{
     row.classList.remove('hideable');
     td.classList.add('filled');
   }}
+
+  if (pid) {{
+    var favs = _loadFavorites();
+    if (row.classList.contains('fav')) favs.add(pid); else favs.delete(pid);
+    _saveFavorites(favs);
+  }}
 }}
 
-// Mark hideable rows once on load so toggles use fast class lookup
+// Mark hideable rows once on load so toggles use fast class lookup, then
+// restore persisted favorites/group-state -- pruning any pid or group id
+// no longer present on this page (e.g. a manual EFL file that's since been
+// removed from --manual-efl-dir) so localStorage doesn't accumulate stale
+// entries over time.
 document.addEventListener('DOMContentLoaded', function() {{
   document.querySelectorAll('tbody tr:not(.best):not(.current-row)').forEach(function(r) {{
     r.classList.add('hideable');
   }});
+
+  var pidToRow = {{}};
+  document.querySelectorAll('tbody tr[data-pid]').forEach(function(r) {{
+    pidToRow[r.getAttribute('data-pid')] = r;
+  }});
+  var prunedFavs = new Set();
+  _loadFavorites().forEach(function(pid) {{
+    var row = pidToRow[pid];
+    if (!row) return;   // stale -- prune
+    prunedFavs.add(pid);
+    row.classList.add('fav');
+    row.classList.remove('hideable');
+    var td = row.querySelector('td.fav-btn');
+    if (td) td.classList.add('filled');
+  }});
+  _saveFavorites(prunedFavs);
+
+  var prunedGroupState = {{}};
+  var groupState = _loadGroupState();
+  Object.keys(groupState).forEach(function(gid) {{
+    var hdr   = document.getElementById(gid + '-hdr');
+    var tbody = document.getElementById(gid);
+    var arrow = document.getElementById(gid + '-arrow');
+    if (!hdr || !tbody || !arrow) return;   // stale -- prune
+    var state = groupState[gid];
+    prunedGroupState[gid] = state;
+    if (state === 'best') {{
+      tbody.classList.add('show-best');
+      tbody.style.display = '';
+      arrow.innerHTML = '&#9733;';
+      hdr.setAttribute('data-state', 'best');
+    }} else if (state === 'hidden') {{
+      tbody.classList.remove('show-best');
+      tbody.style.display = 'none';
+      arrow.innerHTML = '&#9654;';
+      hdr.setAttribute('data-state', 'hidden');
+    }}
+    // 'all' is already the default rendered state -- nothing to do.
+  }});
+  _saveGroupState(prunedGroupState);
 }});
 
 // VS column tooltip — anchored above the cell
