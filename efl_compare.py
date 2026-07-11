@@ -1981,7 +1981,7 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
         print("-" * 72)
         print(f"  {_current_r['provider'][:28]} / {_current_r['plan'][:28]}  "
               f"({_current_r['term']}-mo)  {_cur_rate:.2f}¢  ETF: {_current_r['etf'] or '$0'}"
-              f"  @ {COMPARE_TIER:,} kWh")
+              f"  @ {COMPARE_TIER:,} kWh  |  Energy: {_energy_price_str(_current_r['ec_cents'], _current_r['bc'])}")
         if _best_r is None:
             print("  No other plans in this comparison to measure against.")
         elif _cur_rate <= _best_r["tiers"][COMPARE_TIER]:
@@ -1990,7 +1990,8 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
             _delta = _cur_rate - _best_r["tiers"][COMPARE_TIER]
             _save_mo = _delta / 100 * COMPARE_TIER
             print(f"  Cheapest found: {_best_r['provider'][:28]} / {_best_r['plan'][:28]} "
-                  f"({_best_r['term']}-mo)  {_best_r['tiers'][COMPARE_TIER]:.2f}¢")
+                  f"({_best_r['term']}-mo)  {_best_r['tiers'][COMPARE_TIER]:.2f}¢"
+                  f"  |  Energy: {_energy_price_str(_best_r['ec_cents'], _best_r['bc'])}")
             print(f"  You could save ~{_delta:.2f}¢/kWh -- about ${_save_mo:.2f}/mo "
                   f"@ {COMPARE_TIER:,} kWh -- by switching.")
         print()
