@@ -395,7 +395,7 @@ fetch('/api/plans')
     document.getElementById('foot').innerHTML =
       'Prices are estimated monthly bills including delivery charges, at the usage you pick. Taxes excluded. ' +
       'Always confirm on the provider’s official Electricity Facts Label before enrolling.' +
-      '<br><a href="/full">See the full technical comparison &rarr;</a>';
+      '<br><a href="/">See the full technical comparison &rarr;</a>';
     renderIntro();
   })
   .catch(function(err){

@@ -43,12 +43,10 @@ from urllib.parse import urlparse
 
 HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
+# This folder is self-contained: its own efl_compare.py writes plans_latest.json
+# right here. The parent copy is still accepted as a fallback.
+LOCAL_JSON  = HERE / "plans_latest.json"
 PARENT_JSON = HERE.parent / "plans_latest.json"
-# The parent CLI's own full comparison table, generated in the repo root. Served
-# read-only so it's reachable through this server / the tunnel, not just as a
-# loose file. The wizard is not in this list: it lives here (static/wizard.html)
-# and renders from /api/plans, so the parent CLI needs no knowledge of it.
-FULL_HTML = HERE.parent / "plans_latest.html"      # efl_compare.py (default HTML)
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -74,6 +72,8 @@ class Config:
         env = os.environ.get("EFL_JSON")
         if env:
             return Path(env).expanduser()
+        if LOCAL_JSON.exists():
+            return LOCAL_JSON
         if PARENT_JSON.exists():
             return PARENT_JSON
         return None
@@ -99,7 +99,7 @@ def _load_data() -> dict:
                     "    python3 efl_compare.py --zip YOUR_ZIP --json plans_latest.json\n"
                     "then reload this page (no server restart needed)."
                 ),
-                "looked_at": [str(PARENT_JSON)],
+                "looked_at": [str(LOCAL_JSON), str(PARENT_JSON)],
             },
             "plans": [],
         }
@@ -189,25 +189,6 @@ class Handler(BaseHTTPRequestHandler):
         ctype = _CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
         self._send(200, target.read_bytes(), ctype)
 
-    def _serve_parent_html(self, target: Path, label: str, gen_cmd: str) -> None:
-        """Serve a self-contained HTML file the parent CLI writes to the repo
-        root. If it hasn't been generated yet, return a friendly 404 telling the
-        user how to create it rather than a bare error."""
-        if target.is_file():
-            self._send(200, target.read_bytes(), "text/html; charset=utf-8")
-            return
-        msg = (
-            f"<!doctype html><meta charset='utf-8'>"
-            f"<title>Not generated yet</title>"
-            f"<body style='font:16px system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem'>"
-            f"<h1>The {label} hasn't been generated yet</h1>"
-            f"<p>It's produced by the parent CLI. From the repo root, run:</p>"
-            f"<pre style='background:#f4f4f4;padding:1rem;border-radius:8px'>"
-            f"python3 {gen_cmd} --zip YOUR_ZIP</pre>"
-            f"<p>Then reload this page. <a href='/'>Back to the dashboard</a></p>"
-            f"</body>"
-        ).encode("utf-8")
-        self._send(404, msg, "text/html; charset=utf-8")
 
     # ---- routing ---------------------------------------------------------
     def do_GET(self) -> None:
@@ -236,11 +217,6 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_static("wizard.html")
             return
 
-        # The parent CLI's own full table (served from the repo root).
-        if path in ("/full", "/table", "/plans_latest.html"):
-            self._serve_parent_html(FULL_HTML, "full comparison table",
-                                    "efl_compare.py")
-            return
 
         if path.startswith("/static/"):
             self._serve_static(path[len("/static/"):])
@@ -285,7 +261,7 @@ def main(argv=None) -> int:
     print(f"  Serving:  {url}")
     if resolved is None:
         print("  Data:     (none found yet — the page will show setup instructions)")
-        print(f"            Expected: {PARENT_JSON}")
+        print(f"            Expected: {LOCAL_JSON}")
     else:
         print(f"  Data:     {resolved}")
     print("  Stop:     Ctrl-C")

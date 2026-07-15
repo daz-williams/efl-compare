@@ -132,7 +132,6 @@ docker compose down
 |---|---|
 | `GET /` | The interactive comparison table. |
 | `GET /wizard` | The plain-language guided view (see below). |
-| `GET /full` | The parent CLI's own `plans_latest.html`, if it has been generated. Also at `/table`. |
 | `GET /api/plans` | The full plan JSON (parent schema) plus a `_source` block describing where the data came from. |
 | `GET /api/health` | `{ status, data_available, source }` — handy for scripts/monitors. |
 
