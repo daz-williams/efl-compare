@@ -1,4 +1,4 @@
-# Secrets — never commit the Cloudflare Tunnel token to the upstream PR.
+# Secrets — the Cloudflare Tunnel token and the LLM endpoint config.
 .env
 
 # Python cache
