@@ -1,0 +1,6 @@
+# The web server has NO third-party dependencies — Python standard library only.
+# It runs on the same Python 3.10+ as the parent project (see ../requirements.txt).
+#
+# This file is intentionally empty of packages. It exists to make the
+# zero-dependency stance explicit and to give tooling a requirements file to
+# find in this self-contained folder.

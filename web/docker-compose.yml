@@ -1,0 +1,45 @@
+# Self-contained deployment for the EFL Compare web front-end.
+#
+#   docker compose up -d          # start web server + cloudflare tunnel
+#   docker compose logs -f        # watch logs
+#   docker compose down           # stop
+#
+# Two services:
+#   web         - the stdlib Python server (serve.py), no third-party deps.
+#                 Published to 127.0.0.1:8090 on the host (local only) and also
+#                 reachable as http://web:8090 inside the compose network.
+#   cloudflared - Cloudflare Tunnel connector. Reads CLOUDFLARE_TOKEN from
+#                 ./.env (git-ignored). The public-hostname -> service mapping
+#                 is configured in the Cloudflare Zero Trust dashboard for this
+#                 tunnel; point it at:  http://web:8090
+#
+# Port 8090 is chosen because 4000, 8080 and 8000 are already used by other
+# containers on this host.
+
+services:
+  web:
+    image: python:3.12-slim
+    container_name: efl-web
+    working_dir: /app
+    # Mount the whole repo read-only so serve.py finds ../plans_latest.json
+    # exactly as it would when run directly (HERE.parent / plans_latest.json).
+    volumes:
+      - ../:/app:ro
+    command: >
+      python3 web/serve.py --host 0.0.0.0 --port 8090
+    # Local-only publish; public access goes through the tunnel, not this port.
+    ports:
+      - "127.0.0.1:8090:8090"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: efl-cloudflared
+    command: tunnel --no-autoupdate run
+    # CLOUDFLARE_TOKEN is interpolated from ./.env by Docker Compose.
+    # The cloudflared image expects it under the name TUNNEL_TOKEN.
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TOKEN:?Set CLOUDFLARE_TOKEN in web/.env}
+    depends_on:
+      - web
+    restart: unless-stopped

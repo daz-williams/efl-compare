@@ -1,0 +1,6 @@
+# Secrets — never commit the Cloudflare Tunnel token to the upstream PR.
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
