@@ -2049,6 +2049,7 @@ All rates in ¢/kWh effective (energy + base + TDU). State/local taxes excluded.
                     "facts_url":             r["facts_url"],
                     "terms_url":             r["terms_url"],
                     "yrac_url":              r["yrac_url"],
+                    "enroll_url":            r.get("enroll_url", ""),
                     "fees_credits_text":     r["fees_credits"],
                     "special_terms":         r["special_terms"],
                 }
