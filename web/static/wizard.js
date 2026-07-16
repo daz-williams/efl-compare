@@ -125,6 +125,7 @@ function toPlan(p){
     rnw:        p.renewable_pct,
     tiers:      p.rates_cents_per_kwh || {},
     enroll_url: p.enroll_url || '',
+    website_url: p.website_url || '',
     facts_url:  p.facts_url || '',
     manual:     !!p.manual,
     // The CLI exports cents; every calculation below is in dollars.
@@ -283,9 +284,11 @@ function sameCompanyNote(ranked, curProvider){
   var out = '';
   Object.keys(byParent).forEach(function(parent){
     var g = byParent[parent];
-    // One brand from a parent is just a plan; two or more is the whole point.
-    if (g.brands.length < 2) return;
+    // Dedupe BEFORE counting. Two plans from one brand is not a disclosure --
+    // nobody is fooled that TriEagle and TriEagle are the same company. Only
+    // distinct brand names hiding one owner are worth saying out loud.
     var uniq = g.brands.filter(function(b, i){ return g.brands.indexOf(b) === i; });
+    if (uniq.length < 2) return;
     var names = uniq.map(function(b){ return '<b>' + esc(b) + '</b>'; });
     var list = names.length > 1
       ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
@@ -304,10 +307,15 @@ function sameCompanyNote(ranked, curProvider){
   // "Switching" to your own parent company is worth knowing before you click.
   var curF = curProvider ? familyOf(curProvider) : null;
   if (curF){
+    // Same dedupe: three plans from one sibling brand is still one sibling.
+    var seenBrand = {};
     var shared = ranked.filter(function(x){
       var f = familyOf(x.p.provider);
-      return f && f.parent === curF.parent &&
-             normProvider(x.p.provider) !== normProvider(curProvider);
+      if (!f || f.parent !== curF.parent) return false;
+      var n = normProvider(x.p.provider);
+      if (n === normProvider(curProvider) || seenBrand[n]) return false;
+      seenBrand[n] = true;
+      return true;
     });
     if (shared.length){
       var sn = shared.map(function(x){ return '<b>' + esc(x.p.provider) + '</b>'; });
@@ -685,8 +693,24 @@ function renderResults(){
         saveHtml = '<div class="save" style="background:transparent;color:var(--mid)">About the same as your current plan</div>';
       }
     }
-    var link = p.enroll_url || p.facts_url || '';
-    var act = link ? '<div class="act"><a href="' + esc(link) + '" target="_blank" rel="noopener">Choose this plan &nbsp;&rarr;</a></div>' : '';
+    // Same fallback the CLI's own HTML uses for its 🛒 / 🌐 icons: the PUCT
+    // enrolment link first (populated on ~99% of rows), then the provider's
+    // site, then the EFL as a last resort. The button has to say which one it
+    // is -- "Choose this plan" landing on a PDF is a promise the link doesn't
+    // keep, and that's what it did while enroll_url went unexported.
+    var link = p.enroll_url || p.website_url || p.facts_url || '';
+    var cta = p.enroll_url  ? 'Sign up for this plan'
+            : p.website_url ? 'Go to ' + esc(p.provider)
+            : 'Read the plan’s fact sheet';
+    var act = link
+      ? '<div class="act"><a href="' + esc(link) + '" target="_blank" rel="noopener">' +
+          cta + ' &nbsp;&rarr;</a>' +
+        (p.enroll_url && p.facts_url
+          ? '<a class="actsub" href="' + esc(p.facts_url) + '" target="_blank" rel="noopener">' +
+            'or read the fact sheet first</a>'
+          : '') +
+        '</div>'
+      : '';
     // Name the owner on every card that has one, not just the flagged clashes.
     var fam = familyOf(p.provider);
     var owner = (fam && normProvider(fam.parent) !== normProvider(p.provider))
@@ -775,9 +799,9 @@ fetch('/static/brand_families.json')
       return;
     }
     document.getElementById('foot').innerHTML =
-      'Prices are estimated monthly bills including delivery charges, at the usage you pick. Taxes excluded. ' +
-      'Always confirm on the provider’s official Electricity Facts Label before enrolling.' +
-      '<br><a href="/">See the full technical comparison &rarr;</a>';
+      '<a class="tablelink" href="/table">View table comparison &rarr;</a>' +
+      '<p>Prices are estimated monthly bills including delivery charges, at the usage you pick. ' +
+      'Taxes excluded. Always confirm on the provider’s official Electricity Facts Label before enrolling.</p>';
     renderIntro();
   })
   .catch(function(err){

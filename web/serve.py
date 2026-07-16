@@ -226,14 +226,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, _load_data())
             return
 
-        if path == "/" or path == "/index.html":
-            self._serve_static("index.html")
+        # The wizard is the front door: it answers "what should I switch to?",
+        # which is what people arrive asking. The full table is a tool for
+        # people who already know what they're looking at, so it lives at
+        # /table with a link from the wizard's footer.
+        if path in ("/", "/wizard", "/wizard.html"):
+            self._serve_static("wizard.html")
             return
 
-        # The wizard is served from here and renders client-side from
-        # /api/plans -- no CLI flag, no generated file.
-        if path in ("/wizard", "/wizard.html"):
-            self._serve_static("wizard.html")
+        if path in ("/table", "/index.html"):
+            self._serve_static("index.html")
             return
 
 

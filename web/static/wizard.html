@@ -108,7 +108,9 @@
     padding:13px 17px; margin-bottom:18px; font-size:.88rem; color:var(--mid); line-height:1.55;
   }
   .curbanner b{color:var(--ink)}
-  .rank{display:flex; flex-direction:column; gap:18px}
+  /* Roomy: each card's badge hangs 12px above it, so a tight gap makes the
+     badge read as attached to the card above rather than its own. */
+  .rank{display:flex; flex-direction:column; gap:26px; margin-top:22px}
   .plan{
     background:var(--card); border:1.5px solid var(--line); border-radius:var(--r-md); padding:26px 28px;
     position:relative;
@@ -140,8 +142,13 @@
   .chip.on .chipsub{color:#fff; opacity:.85}
   .chip:disabled{opacity:.4; cursor:not-allowed}
   /* Same-parent-company disclosure */
-  .famwarn{background:var(--warn-bg); border:1.5px solid var(--line);
-    border-radius:var(--r-sm); padding:14px 17px; margin-bottom:14px; font-size:.92rem; line-height:1.55}
+  /* Neutral fill, brand on the edge. A full-width orange wash reads as a brown
+     field; a 3px accent says the same thing without staining the panel, and it
+     keeps this louder than the plain grey note above it. */
+  .famwarn{background:var(--notice-bg); border:1.5px solid var(--line);
+    border-left:3px solid var(--brand);
+    border-radius:var(--r-sm); padding:14px 17px 14px 15px; margin-bottom:14px;
+    font-size:.92rem; line-height:1.55}
   .famwarn .famnote{display:block; color:var(--mid); font-size:.84rem; margin-top:5px}
   .famwarn .famsrc{display:inline-block; margin-top:5px; font-size:.78rem; color:var(--faint)}
   .plan .name{font-family:var(--font-head); font-weight:700; font-size:1.2rem;
@@ -162,7 +169,14 @@
   .meta .leaf{color:var(--good); font-weight:700}
   .be{margin-top:13px; padding:12px 15px; background:var(--surface-sunk); border-radius:var(--r-xs);
     font-size:.89rem; border:1.5px solid var(--line); line-height:1.55}
-  .plan .act{margin-top:18px}
+  .plan .act{margin-top:18px; display:flex; flex-direction:column; align-items:center; gap:9px}
+  /* The EFL is the boring, important document. Always reachable, never the
+     thing competing with the button. */
+  .plan .act .actsub{
+    color:var(--mid); font-size:.82rem; font-weight:600; text-decoration:none;
+    background:none; border:0; padding:0; width:auto;
+  }
+  .plan .act .actsub:hover{color:var(--brand); text-decoration:underline; background:none}
   .plan .act a{
     display:inline-flex; align-items:center; justify-content:center; gap:8px;
     background:var(--brand); color:#fff; text-decoration:none; font-weight:700; font-size:15.5px;
@@ -175,8 +189,17 @@
     background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong);
   }
   .plan.n2 .act a:hover, .plan.n3 .act a:hover{background:var(--surface-sunk); border-color:var(--ink)}
-  .foot{text-align:center; color:var(--faint); font-size:.79rem; margin-top:28px; line-height:1.6}
-  .foot a{color:var(--faint)}
+  .foot{text-align:center; color:var(--faint); font-size:.79rem; margin-top:32px; line-height:1.6}
+  .foot p{margin:16px auto 0; max-width:52ch}
+  /* Subtle by intent: the table is for people who already know what they're
+     looking at. Present, not competing with the wizard. */
+  .foot .tablelink{
+    display:inline-flex; align-items:center; gap:7px;
+    background:var(--card); color:var(--mid); text-decoration:none;
+    border:1.5px solid var(--line); border-radius:var(--r-pill);
+    padding:9px 18px; font-size:.85rem; font-weight:700; transition:.15s;
+  }
+  .foot .tablelink:hover{border-color:var(--brand); color:var(--brand); text-decoration:none}
   .navrow{display:flex; justify-content:space-between; align-items:center; margin-top:18px}
   .field{margin:0 0 18px}
   .field label{display:block; font-weight:700; margin-bottom:7px; font-size:.95rem}

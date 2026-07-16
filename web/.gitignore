@@ -16,3 +16,7 @@ plans_*.json
 # Python cache
 __pycache__/
 *.py[cod]
+
+# EFL cache — symlinked to the parent's, so the fork reuses the same downloads
+# instead of re-fetching 121 PDFs. Generated data, never committed.
+efls_cache

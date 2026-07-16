@@ -60,7 +60,12 @@
   --brand-dark:#B65812;
   --brand-ink:#FFFFFF;
   --warn:#B65812;
-  --warn-bg:#FBF1E7;        /* brand tint: badges, icon chips, notices */
+  --warn-bg:#FBF1E7;        /* brand tint: badges and icon chips — small areas */
+  /* Notices are a neutral lift, not a brand wash. Over a *small* area (a 44px
+     icon chip) the orange tint reads as warmth; stretched across a full-width
+     panel it reads as a brown field, and no amount of tuning fixes that. Big
+     surfaces stay neutral and let a border carry the brand. */
+  --notice-bg:#F7F5F0;
 
   /* Positive — savings, confirmations, green plans */
   --good:#2E7D4F;
@@ -143,6 +148,9 @@
      #38302D. Over the warm card it lands +20 warmer than its surface, the same
      step --warn-bg takes from --card in light. */
   --d-warn-bg:rgba(232,133,60,.12);
+  /* White at low alpha: a neutral lift off whatever it sits on, in the one
+     direction that always reads as "raised" on a dark ground. */
+  --d-notice-bg:rgba(255,255,255,.055);
 
   --d-good:#4FB380;
   --d-good-dark:#8FD9B4;
@@ -167,7 +175,7 @@
     --ink:var(--d-ink); --mid:var(--d-mid); --faint:var(--d-faint);
     --line:var(--d-line); --line-strong:var(--d-line-strong); --line-dashed:var(--d-line-dashed);
     --brand:var(--d-brand); --brand-dark:var(--d-brand-dark);
-    --warn:var(--d-warn); --warn-bg:var(--d-warn-bg);
+    --warn:var(--d-warn); --warn-bg:var(--d-warn-bg); --notice-bg:var(--d-notice-bg);
     --good:var(--d-good); --good-dark:var(--d-good-dark); --good-bg:var(--d-good-bg);
     --dark:var(--d-dark); --on-dark-mid:var(--d-on-dark-mid);
     --cat-blue:var(--d-cat-blue); --cat-gold:var(--d-cat-gold);
@@ -181,7 +189,7 @@
   --ink:var(--d-ink); --mid:var(--d-mid); --faint:var(--d-faint);
   --line:var(--d-line); --line-strong:var(--d-line-strong); --line-dashed:var(--d-line-dashed);
   --brand:var(--d-brand); --brand-dark:var(--d-brand-dark);
-  --warn:var(--d-warn); --warn-bg:var(--d-warn-bg);
+  --warn:var(--d-warn); --warn-bg:var(--d-warn-bg); --notice-bg:var(--d-notice-bg);
   --good:var(--d-good); --good-dark:var(--d-good-dark); --good-bg:var(--d-good-bg);
   --dark:var(--d-dark); --on-dark-mid:var(--d-on-dark-mid);
   --cat-blue:var(--d-cat-blue); --cat-gold:var(--d-cat-gold);
