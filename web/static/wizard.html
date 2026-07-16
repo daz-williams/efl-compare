@@ -80,8 +80,12 @@
   .price{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
   .price .amt{font-size:2.1rem; font-weight:800; letter-spacing:-.02em}
   .price .per{color:var(--mid); font-size:.9rem}
+  /* The all-in rate, directly comparable to the ¢/kWh in the bill banner. */
+  .price .rate{color:var(--ink); font-size:.9rem; font-weight:700;
+    background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:2px 8px}
   .save{display:inline-block; background:var(--good-bg); color:var(--good); font-weight:700;
     font-size:.9rem; padding:4px 11px; border-radius:8px; margin-top:8px}
+  .tot{color:var(--mid); font-size:.85rem; margin-top:7px}
   .meta{display:flex; gap:16px; flex-wrap:wrap; color:var(--mid); font-size:.85rem; margin-top:12px}
   .meta .leaf{color:var(--good); font-weight:700}
   .be{margin-top:12px; padding:11px 14px; background:var(--bg); border-radius:10px;

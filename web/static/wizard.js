@@ -171,6 +171,20 @@ function fmtEtf(etfStr){
   return '$' + (v % 1 ? v.toFixed(2) : v.toFixed(0));
 }
 
+// A saving only holds while the rate is locked. Plenty of these plans run 5
+// months, so projecting a full year would promise money the contract doesn't
+// guarantee -- past the term you roll to a variable rate, which is how most
+// people end up overpaying in the first place.
+function totalSaveNote(saveMo, term){
+  if (saveMo <= 0) return '';
+  var t = parseFloat(term);
+  if (!t || t < 2) return '';
+  if (t >= 12)
+    return 'About <b>$' + Math.round(saveMo * 12).toLocaleString() + '</b> over 12 months';
+  return 'About <b>$' + Math.round(saveMo * t).toLocaleString() + '</b> over the ' + t +
+         '-month term &mdash; then the rate ends and you shop again';
+}
+
 function breakevenNote(saveMo, etfStr, monthsRemaining){
   if (saveMo <= 0) return '';
   var etf = parseEtf(etfStr);
@@ -455,11 +469,13 @@ function renderResults(){
   ranked.forEach(function(x, i){
     var p = x.p, m = x.m;
     var green = (parseFloat(p.rnw) >= 99) ? '<span class="leaf">🌱 100% green</span>' : (p.rnw && p.rnw !== '?' ? esc(p.rnw) + '% renewable' : '');
-    var saveHtml = '', beHtml = '';
+    var saveHtml = '', beHtml = '', totHtml = '';
     if (curM != null){
       var save = curM - m;
       if (save > 0){
         saveHtml = '<div class="save">Save about $' + save + '/mo vs your plan</div>';
+        var tot = totalSaveNote(save, p.term);
+        if (tot) totHtml = '<div class="tot">' + tot + '</div>';
         var note = breakevenNote(save, curEtf, months);
         if (note) beHtml = '<div class="be">' + note + '</div>';
       } else {
@@ -473,8 +489,9 @@ function renderResults(){
         '<span class="badge">' + labels[i] + '</span>' +
         '<div class="prov">' + esc(p.provider) + '</div>' +
         '<div class="name">' + esc(p.plan) + '</div>' +
-        '<div class="price"><span class="amt">$' + m + '</span><span class="per">/ month at ' + kwh.toLocaleString() + ' kWh</span></div>' +
-        saveHtml +
+        '<div class="price"><span class="amt">$' + m + '</span><span class="per">/ month at ' + kwh.toLocaleString() + ' kWh</span>' +
+          '<span class="rate">' + (m / kwh * 100).toFixed(1) + '&cent;/kWh all-in</span></div>' +
+        saveHtml + totHtml +
         '<div class="meta"><span>&#128274; Locked in for ' + (p.term || '?') + ' months</span>' + (green ? '<span>' + green + '</span>' : '') + '<span>Exit fee: ' + fmtEtf(p.etf) + '</span></div>' +
         beHtml +
         act +
