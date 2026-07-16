@@ -4,141 +4,152 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find your cheaper electricity plan</title>
+<!-- Palette, type and shared components: static/theme.css -->
+<link rel="stylesheet" href="/static/theme.css">
 <style>
-  :root{
-    --bg:#f4f6fb; --card:#ffffff; --ink:#141c2b; --mid:#5a6478; --line:#e4e9f2;
-    --brand:#1f6feb; --brand-ink:#ffffff; --good:#12855a; --good-bg:#e6f6ee;
-    --warn:#b25e00; --warn-bg:#fdf1e1; --shadow:0 6px 24px rgba(20,28,43,.08);
-  }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --bg:#0f1420; --card:#171f2e; --ink:#eef2f9; --mid:#9aa6bd; --line:#26303f;
-      --brand:#4d90f0; --good:#3ecf8e; --good-bg:#12261e; --warn:#e0932f; --warn-bg:#2a2013;
-      --shadow:0 6px 24px rgba(0,0,0,.35);
-    }
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; background:var(--bg); color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    line-height:1.5; -webkit-font-smoothing:antialiased;
-  }
   .wrap{max-width:760px; margin:0 auto; padding:24px 18px 64px}
-  header.top{display:flex; align-items:center; gap:10px; padding:8px 2px 20px}
-  .spark{font-size:1.5rem}
-  .top h1{font-size:1.05rem; margin:0; font-weight:700}
-  .top .sub{color:var(--mid); font-size:.8rem; margin-top:2px}
+  header.top{display:flex; align-items:center; gap:11px; padding:8px 2px 20px}
+  /* The mark from the prototype nav: a rounded brand square holding a letter. */
+  .spark{
+    width:34px; height:34px; border-radius:10px; background:var(--brand);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    color:#fff; font-family:var(--font-head); font-weight:800; font-size:18px;
+  }
+  .top h1{font-size:1.15rem; margin:0; font-weight:700; letter-spacing:-.02em}
+  .top .sub{color:var(--faint); font-size:.8rem; margin-top:2px; font-weight:500}
   .dots{display:flex; gap:8px; justify-content:center; margin:6px 0 22px}
-  .dot{width:9px; height:9px; border-radius:50%; background:var(--line)}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--line-strong)}
   .dot.on{background:var(--brand)}
   .card{
-    background:var(--card); border:1px solid var(--line); border-radius:18px;
-    box-shadow:var(--shadow); padding:26px;
+    background:var(--card); border:1.5px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:var(--shadow); padding:28px;
   }
-  h2.q{font-size:1.5rem; margin:.1em 0 .1em; font-weight:800; letter-spacing:-.01em}
-  p.lead{color:var(--mid); margin:.2em 0 1.4em; font-size:1rem}
+  h2.q{font-family:var(--font-head); font-size:clamp(26px,4vw,36px); margin:.1em 0 .1em;
+    font-weight:800; letter-spacing:-.02em; line-height:1.12; text-wrap:balance}
+  p.lead{color:var(--mid); margin:.35em 0 1.5em; font-size:17px; line-height:1.6; text-wrap:pretty}
   .choices{display:grid; gap:12px}
   .choice{
     display:flex; align-items:center; gap:14px; width:100%; text-align:left;
-    background:var(--card); border:1.5px solid var(--line); border-radius:14px;
-    padding:16px 18px; cursor:pointer; font:inherit; color:inherit; transition:.15s;
+    background:var(--card); border:1.5px solid var(--line); border-radius:var(--r-sm);
+    padding:17px 18px; cursor:pointer; font:inherit; color:inherit; transition:.15s;
   }
-  .choice:hover{border-color:var(--brand); transform:translateY(-1px)}
-  .choice .emoji{font-size:1.7rem; width:38px; text-align:center}
-  .choice .t{font-weight:700; font-size:1.05rem}
-  .choice .d{color:var(--mid); font-size:.85rem}
+  .choice:hover{border-color:var(--brand); background:var(--surface-sunk); transform:translateY(-1px)}
+  /* Icon chip: brand tint behind a glyph, as on the prototype's step cards. */
+  .choice .emoji{
+    width:44px; height:44px; border-radius:12px; background:var(--warn-bg);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.35rem; flex-shrink:0;
+  }
+  .choice .t{font-family:var(--font-head); font-weight:700; font-size:1.05rem; letter-spacing:-.01em}
+  .choice .d{color:var(--mid); font-size:.88rem}
   .choice .from{margin-left:auto; text-align:right; white-space:nowrap}
-  .choice .from b{font-size:1.15rem}
-  .choice .from span{display:block; color:var(--mid); font-size:.72rem}
+  .choice .from b{font-family:var(--font-head); font-size:1.2rem; font-weight:800}
+  .choice .from span{display:block; color:var(--faint); font-size:.72rem; font-weight:500}
   button.big{
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
-    background:var(--brand); color:var(--brand-ink); border:0; border-radius:14px;
-    padding:16px 26px; font:inherit; font-weight:700; font-size:1.05rem; cursor:pointer;
-    width:100%; transition:.15s;
+    background:var(--brand); color:#fff; border:0; border-radius:var(--r-sm);
+    padding:17px 26px; font-family:var(--font-body); font-weight:700; font-size:17px;
+    cursor:pointer; width:100%; transition:background .15s;
+    box-shadow:var(--shadow-brand);
   }
-  button.big:hover{filter:brightness(1.06)}
-  .link{background:none; border:0; color:var(--brand); font:inherit; cursor:pointer; padding:8px; font-weight:600}
+  button.big:hover{background:var(--brand-dark)}
+  .link{background:none; border:0; color:var(--brand); font:inherit; cursor:pointer; padding:8px; font-weight:700}
   .curbanner{
-    background:var(--warn-bg); border:1px solid var(--line); border-radius:12px;
-    padding:12px 16px; margin-bottom:18px; font-size:.92rem;
+    background:var(--warn-bg); border:1.5px solid var(--line); border-radius:var(--r-sm);
+    padding:14px 17px; margin-bottom:18px; font-size:.95rem;
   }
   .curbanner b{color:var(--ink)}
-  .rank{display:flex; flex-direction:column; gap:14px}
+  .rank{display:flex; flex-direction:column; gap:18px}
   .plan{
-    background:var(--card); border:1.5px solid var(--line); border-radius:16px; padding:20px;
+    background:var(--card); border:1.5px solid var(--line); border-radius:var(--r-md); padding:26px 28px;
     position:relative;
   }
-  .plan.best{border-color:var(--good)}
+  /* The prototype gives its top pick the brand colour, not the savings green:
+     orange means "we picked this", green stays reserved for money saved. */
+  .plan.best{border:2px solid var(--brand); box-shadow:var(--shadow-card)}
   .badge{
-    position:absolute; top:-11px; left:18px; background:var(--good); color:#fff;
-    font-size:.72rem; font-weight:800; letter-spacing:.03em; padding:3px 11px; border-radius:20px;
-    text-transform:uppercase;
+    position:absolute; top:-12px; left:26px; background:var(--brand); color:#fff;
+    font-size:12.5px; font-weight:700; letter-spacing:.03em; padding:5px 14px;
+    border-radius:var(--r-pill); text-transform:uppercase;
   }
-  .plan.n2 .badge, .plan.n3 .badge{background:var(--mid)}
-  .plan .prov{color:var(--mid); font-size:.82rem; font-weight:600}
-  .plan .prov .owner{font-weight:500; opacity:.75; text-transform:none}
+  .plan.n2 .badge, .plan.n3 .badge{background:var(--faint)}
+  .plan .prov{color:var(--mid); font-size:.85rem; font-weight:700}
+  .plan .prov .owner{font-weight:500; color:var(--faint); text-transform:none}
   .plan .prov .owner::before{content:"·"; margin:0 6px}
   /* Contract-length picker */
-  .termpick{margin:0 0 16px}
-  .termlab{display:block; color:var(--mid); font-size:.85rem; margin-bottom:8px}
+  .termpick{margin:0 0 18px}
+  .termlab{display:block; color:var(--faint); font-size:12.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.08em; margin-bottom:9px}
   .chips{display:flex; gap:8px; flex-wrap:wrap}
   .chip{display:flex; flex-direction:column; align-items:flex-start; gap:1px;
-    background:var(--card); color:var(--ink); border:1px solid var(--line);
-    border-radius:11px; padding:7px 13px; font:inherit; font-size:.86rem;
-    font-weight:700; cursor:pointer; text-align:left}
+    background:var(--card); color:var(--ink); border:1.5px solid var(--line);
+    border-radius:var(--r-xs); padding:8px 14px; font-family:var(--font-body); font-size:.88rem;
+    font-weight:700; cursor:pointer; text-align:left; transition:.15s}
   .chip .chipsub{font-weight:400; font-size:.74rem; color:var(--mid)}
   .chip:hover:not(:disabled){border-color:var(--brand)}
   .chip.on{border-color:var(--brand); background:var(--brand); color:#fff}
   .chip.on .chipsub{color:#fff; opacity:.85}
   .chip:disabled{opacity:.4; cursor:not-allowed}
   /* Same-parent-company disclosure */
-  .famwarn{background:var(--warn-bg); border:1px solid var(--line);
-    border-radius:12px; padding:12px 15px; margin-bottom:14px; font-size:.9rem; line-height:1.5}
-  .famwarn .famnote{display:block; color:var(--mid); font-size:.83rem; margin-top:5px}
-  .famwarn .famsrc{display:inline-block; margin-top:5px; font-size:.78rem; color:var(--mid)}
-  .plan .name{font-weight:800; font-size:1.15rem; margin:1px 0 8px; letter-spacing:-.01em}
-  .price{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
-  .price .amt{font-size:2.1rem; font-weight:800; letter-spacing:-.02em}
+  .famwarn{background:var(--warn-bg); border:1.5px solid var(--line);
+    border-radius:var(--r-sm); padding:14px 17px; margin-bottom:14px; font-size:.92rem; line-height:1.55}
+  .famwarn .famnote{display:block; color:var(--mid); font-size:.84rem; margin-top:5px}
+  .famwarn .famsrc{display:inline-block; margin-top:5px; font-size:.78rem; color:var(--faint)}
+  .plan .name{font-family:var(--font-head); font-weight:700; font-size:1.2rem;
+    margin:2px 0 10px; letter-spacing:-.01em}
+  .price{display:flex; align-items:baseline; gap:9px; flex-wrap:wrap}
+  .price .amt{font-family:var(--font-head); font-size:2.2rem; font-weight:800;
+    letter-spacing:-.03em; font-variant-numeric:tabular-nums}
   .price .per{color:var(--mid); font-size:.9rem}
   /* The all-in rate, directly comparable to the ¢/kWh in the bill banner. */
-  .price .rate{color:var(--ink); font-size:.9rem; font-weight:700;
-    background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:2px 8px}
-  .save{display:inline-block; background:var(--good-bg); color:var(--good); font-weight:700;
-    font-size:.9rem; padding:4px 11px; border-radius:8px; margin-top:8px}
-  .tot{color:var(--mid); font-size:.85rem; margin-top:7px}
-  .meta{display:flex; gap:16px; flex-wrap:wrap; color:var(--mid); font-size:.85rem; margin-top:12px}
+  .price .rate{color:var(--ink); font-size:.88rem; font-weight:700;
+    background:var(--surface-sunk); border:1.5px solid var(--line);
+    border-radius:var(--r-pill); padding:3px 11px; font-variant-numeric:tabular-nums}
+  .save{display:inline-block; background:var(--good-bg); color:var(--good);
+    font-family:var(--font-head); font-weight:700;
+    font-size:.92rem; padding:5px 13px; border-radius:var(--r-pill); margin-top:10px}
+  .tot{color:var(--mid); font-size:.85rem; margin-top:8px}
+  .meta{display:flex; gap:16px; flex-wrap:wrap; color:var(--mid); font-size:.85rem; margin-top:13px}
   .meta .leaf{color:var(--good); font-weight:700}
-  .be{margin-top:12px; padding:11px 14px; background:var(--bg); border-radius:10px;
-    font-size:.88rem; border:1px solid var(--line)}
-  .plan .act{margin-top:16px}
+  .be{margin-top:13px; padding:12px 15px; background:var(--surface-sunk); border-radius:var(--r-xs);
+    font-size:.89rem; border:1.5px solid var(--line); line-height:1.55}
+  .plan .act{margin-top:18px}
   .plan .act a{
     display:inline-flex; align-items:center; justify-content:center; gap:8px;
-    background:var(--brand); color:var(--brand-ink); text-decoration:none; font-weight:700;
-    border-radius:11px; padding:12px 18px; width:100%;
+    background:var(--brand); color:#fff; text-decoration:none; font-weight:700; font-size:15.5px;
+    border-radius:var(--r-xs); padding:14px 22px; width:100%; transition:background .15s;
   }
-  .foot{text-align:center; color:var(--mid); font-size:.78rem; margin-top:26px; line-height:1.6}
-  .foot a{color:var(--mid)}
+  .plan .act a:hover{background:var(--brand-dark); text-decoration:none}
+  /* Secondary treatment for the runners-up, as in the prototype: only the top
+     pick gets a filled button, so the eye lands on one thing. */
+  .plan.n2 .act a, .plan.n3 .act a{
+    background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong);
+  }
+  .plan.n2 .act a:hover, .plan.n3 .act a:hover{background:var(--surface-sunk); border-color:var(--ink)}
+  .foot{text-align:center; color:var(--faint); font-size:.79rem; margin-top:28px; line-height:1.6}
+  .foot a{color:var(--faint)}
   .navrow{display:flex; justify-content:space-between; align-items:center; margin-top:18px}
   .field{margin:0 0 18px}
-  .field label{display:block; font-weight:700; margin-bottom:7px; font-size:1rem}
+  .field label{display:block; font-weight:700; margin-bottom:7px; font-size:.95rem}
   .field .hint{color:var(--mid); font-weight:400; font-size:.82rem}
   .inrow{display:flex; align-items:center; gap:10px}
   .inrow input{
-    flex:1; min-width:0; font:inherit; font-size:1.05rem; padding:13px 15px;
-    border:1.5px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink);
+    flex:1; min-width:0; font-family:var(--font-body); font-size:16px; padding:13px 14px;
+    border:1.5px solid var(--line-strong); border-radius:var(--r-xs);
+    background:var(--card); color:var(--ink);
   }
   .inrow input:focus{outline:none; border-color:var(--brand)}
   .inrow .unit{color:var(--mid); font-weight:600; white-space:nowrap}
   .err{color:var(--warn); font-size:.88rem; margin:2px 0 12px; min-height:1.1em}
-  .optional{border-top:1px solid var(--line); margin:22px 0 18px; padding-top:18px}
-  .optional .why{color:var(--mid); font-size:.85rem; margin:0 0 16px}
+  .optional{border-top:1.5px solid var(--line); margin:24px 0 18px; padding-top:20px}
+  .optional .why{color:var(--mid); font-size:.88rem; margin:0 0 16px}
   .hidden{display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <span class="spark">&#9889;</span>
+    <span class="spark" aria-hidden="true">M</span>
     <div>
       <h1>Find your cheaper electricity plan</h1>
       <div class="sub" id="subline"></div>

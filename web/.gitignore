@@ -9,6 +9,10 @@ uploads/
 plans_latest.json
 plans_*.json
 
+# Design sources dropped in by hand (prototype exports, zips). The system they
+# feed is captured in STYLE.md and static/theme.css, which are committed.
+.tmp/
+
 # Python cache
 __pycache__/
 *.py[cod]

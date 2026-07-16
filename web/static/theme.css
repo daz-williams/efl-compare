@@ -1,0 +1,214 @@
+/* ===========================================================================
+   Design tokens — the Mustang look.
+   Adapted from the Mustang.dc.html prototype (web/.tmp/html.zip).
+
+   Everything visual lives here: colour, type, radius, shadow. Pages should
+   reach for these variables rather than literals, so a palette change is one
+   file rather than a hunt.
+
+   The prototype is light-only. A dark scheme is derived below from the same
+   hues, because the app already honoured prefers-color-scheme and taking that
+   away to match a mockup would be a regression for anyone who set it.
+   =========================================================================== */
+
+/* --- Type ---------------------------------------------------------------
+   Self-hosted rather than linked from fonts.googleapis.com. The prototype
+   links Google; doing that here would send every visitor's IP to a third
+   party to render a page that otherwise phones nobody, and would break the
+   site offline. Latin subset only, 170 KB in total.
+   ------------------------------------------------------------------------ */
+@font-face{font-family:'Sora';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/static/fonts/sora-400.woff2') format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:600;font-display:swap;
+  src:url('/static/fonts/sora-600.woff2') format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/static/fonts/sora-700.woff2') format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;
+  src:url('/static/fonts/sora-800.woff2') format('woff2')}
+@font-face{font-family:'Karla';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/static/fonts/karla-400.woff2') format('woff2')}
+@font-face{font-family:'Karla';font-style:normal;font-weight:500;font-display:swap;
+  src:url('/static/fonts/karla-500.woff2') format('woff2')}
+@font-face{font-family:'Karla';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/static/fonts/karla-700.woff2') format('woff2')}
+
+:root{
+  /* Sora carries headings and numbers: geometric, tight, confident.
+     Karla carries prose: humanist, warm, easy at 15-19px. */
+  --font-head:'Sora', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body:'Karla', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Surfaces — warm off-whites, not blue-greys. This is what makes the
+     palette feel domestic rather than fintech. */
+  --bg:#FDFDFB;
+  --card:#FFFFFF;
+  --surface-alt:#F7F5F0;    /* full-width bands that break up the page */
+  --surface-sunk:#FBFAF7;   /* rows inset within a card */
+
+  /* Text */
+  --ink:#20242B;
+  --mid:#5A6070;
+  --faint:#9CA1AD;          /* eyebrows, captions, disabled */
+
+  /* Lines */
+  --line:#EEECE6;
+  --line-strong:#E2E0DB;    /* input borders, secondary buttons */
+  --line-dashed:#D9CFC0;    /* dropzones */
+
+  /* Brand */
+  --brand:#D96E1E;
+  --brand-dark:#B65812;
+  --brand-ink:#FFFFFF;
+  --warn:#B65812;
+  --warn-bg:#FBF1E7;        /* brand tint: badges, icon chips, notices */
+
+  /* Positive — savings, confirmations, green plans */
+  --good:#2E7D4F;
+  --good-dark:#1D5236;
+  --good-bg:#E7F3EC;
+
+  /* Inverted panels (CTA blocks, footers) */
+  --dark:#20242B;
+  --on-dark:#FFFFFF;
+  --on-dark-mid:#B8BCC6;
+
+  /* Categorical — avatars, provider marks. Never for meaning. */
+  --cat-blue:#4A6FA5;
+  --cat-gold:#B08A3E;
+
+  /* Radius: pill for badges/nav, 20-24px cards, 12-14px controls. */
+  --r-pill:999px;
+  --r-lg:24px;
+  --r-md:20px;
+  --r-sm:14px;
+  --r-xs:11px;
+
+  /* Shadow: broad and soft, never a hard drop. */
+  --shadow:0 20px 50px rgba(32,36,43,.07);
+  --shadow-brand:0 4px 14px rgba(217,110,30,.30);
+  --shadow-card:0 8px 24px rgba(217,110,30,.12);
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    /* Same hues, pulled down. #20242B is the prototype's own dark panel, so
+       it becomes the card and the page sits a step below it. */
+    --bg:#15181E;
+    --card:#20242B;
+    --surface-alt:#1A1E25;
+    --surface-sunk:#262B34;
+
+    --ink:#F4F2ED;            /* warm white — a blue-white fights the orange */
+    --mid:#A8AEBB;
+    --faint:#767C89;
+
+    --line:#2E343E;
+    --line-strong:#3A404C;
+    --line-dashed:#4A4237;
+
+    /* Lifted: #D96E1E on a dark ground is muddy and fails contrast. */
+    --brand:#E8853C;
+    --brand-dark:#D96E1E;
+    --warn:#E8853C;
+    --warn-bg:#2C2117;
+
+    --good:#4FB380;
+    --good-dark:#8FD9B4;
+    --good-bg:#152A20;
+
+    --dark:#0F1217;
+    --on-dark-mid:#9AA0AC;
+
+    --cat-blue:#6A8FC5;
+    --cat-gold:#C9A455;
+
+    --shadow:0 20px 50px rgba(0,0,0,.45);
+    --shadow-brand:0 4px 14px rgba(217,110,30,.28);
+    --shadow-card:0 8px 24px rgba(0,0,0,.35);
+  }
+}
+
+/* --- Base --------------------------------------------------------------- */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:var(--font-body); line-height:1.5;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+h1,h2,h3,h4{font-family:var(--font-head); font-weight:800; letter-spacing:-.02em; margin:0}
+h1{font-size:clamp(30px,5vw,54px); line-height:1.08; letter-spacing:-.03em; text-wrap:balance}
+h2{font-size:clamp(24px,3.4vw,34px)}
+h3{font-size:19px; font-weight:700}
+p{margin:0; text-wrap:pretty}
+a{color:var(--brand); text-decoration:none}
+a:hover{color:var(--brand-dark); text-decoration:underline}
+strong{color:var(--ink)}
+
+/* Numbers read as data, not prose: tabular so columns line up and a changing
+   figure doesn't shuffle its neighbours. */
+.num{font-family:var(--font-head); font-weight:800; font-variant-numeric:tabular-nums}
+
+/* --- Shared components -------------------------------------------------- */
+
+/* Eyebrow: the small uppercase label above a block. */
+.eyebrow{
+  font-size:12.5px; font-weight:700; color:var(--faint);
+  text-transform:uppercase; letter-spacing:.08em;
+}
+
+/* Pill badge, brand-tinted. */
+.pill{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--warn-bg); color:var(--warn);
+  border-radius:var(--r-pill); padding:6px 14px;
+  font-size:13.5px; font-weight:700;
+}
+.pill.good{background:var(--good-bg); color:var(--good)}
+
+/* Buttons */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  font-family:var(--font-body); font-size:17px; font-weight:700;
+  border:none; border-radius:var(--r-sm); padding:17px 30px;
+  cursor:pointer; transition:background .15s, border-color .15s, filter .15s;
+}
+.btn-primary{background:var(--brand); color:#fff; box-shadow:var(--shadow-brand)}
+.btn-primary:hover{background:var(--brand-dark)}
+.btn-secondary{
+  background:transparent; color:var(--ink);
+  border:1.5px solid var(--line-strong); padding:16px 24px;
+}
+.btn-secondary:hover{border-color:var(--ink)}
+.btn-dark{background:var(--dark); color:#fff; border-radius:var(--r-pill); padding:10px 20px; font-size:15px}
+.btn-dark:hover{filter:brightness(1.35)}
+
+/* Card */
+.panel{
+  background:var(--card); border:1.5px solid var(--line);
+  border-radius:var(--r-lg); padding:28px;
+}
+.panel-raised{box-shadow:var(--shadow)}
+
+/* Inputs */
+.input{
+  width:100%; font-family:var(--font-body); font-size:16px;
+  border:1.5px solid var(--line-strong); border-radius:var(--r-xs);
+  padding:13px 14px; background:var(--card); color:var(--ink); outline:none;
+}
+.input:focus{border-color:var(--brand)}
+
+/* Progress rail: "Your bill — Compare — Your deals" */
+.rail{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:14px; color:var(--faint); font-weight:600;
+}
+.rail .on{color:var(--brand)}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important}
+}
