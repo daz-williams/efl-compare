@@ -10,9 +10,46 @@
 'use strict';
 
 var DATA = null;
+var FAMILIES = [];              // brand_families.json, normalised at boot
 var app = document.getElementById('app');
-var state = {step: 0, usage: null, entry: null,
+var state = {step: 0, usage: null, entry: null, termPref: 'any',
              manualBill: null, manualEtf: null, manualMonths: null};
+
+// ---------------------------------------------------------------------------
+// Who actually owns the brand
+//
+// PUCT lists brands, not companies. Tara, Amigo and Just Energy are one
+// company; so are Reliant, Green Mountain, Cirro, Discount Power and Direct
+// Energy. A shopper reading a top-three can be looking at a single company
+// three times and have no way to tell -- which is exactly what a comparison
+// site is supposed to prevent. See brand_families.json.
+// ---------------------------------------------------------------------------
+
+function normProvider(s){
+  return ('' + (s || '')).toUpperCase()
+    .replace(/[.,'"]/g, ' ')
+    .replace(/\b(LLC|LP|INC|INCORPORATED|CORP|CORPORATION|COMPANY|HOLDINGS|GROUP)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// null when the brand stands alone -- most do, and saying nothing is correct.
+//
+// Matching is prefix-based, not exact: PUCT says "TXU ENERGY" but an EFL signs
+// itself "TXU Energy Retail Company LLC", and the bill reader returns whatever
+// the document says. Anchoring at a word boundary keeps that tolerant without
+// letting "TRUE POWER" collide with "TRUEPOWER GREEN" or similar.
+function familyOf(provider){
+  var n = normProvider(provider);
+  if (!n) return null;
+  for (var i = 0; i < FAMILIES.length; i++){
+    var brands = FAMILIES[i]._brands;
+    for (var j = 0; j < brands.length; j++){
+      var b = brands[j];
+      if (n === b || n.indexOf(b + ' ') === 0) return FAMILIES[i];
+    }
+  }
+  return null;
+}
 
 function money(cents, kwh){ return Math.round(cents / 100 * kwh); }
 function fmtMonths(n){ return (Math.round(n * 10) / 10).toString().replace(/\.0$/, ''); }
@@ -185,6 +222,61 @@ function totalSaveNote(saveMo, term){
          '-month term &mdash; then the rate ends and you shop again';
 }
 
+// Flags a parent company that owns more than one of the plans on screen, and a
+// pick that shares a parent with the plan the shopper is already on (switching
+// to it keeps them with the same company). Returns '' when the ranking really
+// is as varied as it looks.
+function sameCompanyNote(ranked, curProvider){
+  var byParent = {};
+  ranked.forEach(function(x){
+    var f = familyOf(x.p.provider);
+    if (!f) return;
+    (byParent[f.parent] = byParent[f.parent] || {f: f, brands: []}).brands.push(x.p.provider);
+  });
+
+  var out = '';
+  Object.keys(byParent).forEach(function(parent){
+    var g = byParent[parent];
+    // One brand from a parent is just a plan; two or more is the whole point.
+    if (g.brands.length < 2) return;
+    var uniq = g.brands.filter(function(b, i){ return g.brands.indexOf(b) === i; });
+    var names = uniq.map(function(b){ return '<b>' + esc(b) + '</b>'; });
+    var list = names.length > 1
+      ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+      : names[0];
+    out +=
+      '<div class="famwarn">' +
+        '&#9888;&#65039; ' + list + ' are the same company &mdash; ' +
+        (uniq.length === 2 ? 'both are brands' : 'all ' + uniq.length + ' are brands') +
+        ' of <b>' + esc(parent) + '</b>. ' +
+        'They look like competing offers, but picking between them is not really a choice. ' +
+        (g.f.note ? '<span class="famnote">' + esc(g.f.note) + '</span>' : '') +
+        (g.f.source ? '<a class="famsrc" href="' + esc(g.f.source) + '" target="_blank" rel="noopener">source</a>' : '') +
+      '</div>';
+  });
+
+  // "Switching" to your own parent company is worth knowing before you click.
+  var curF = curProvider ? familyOf(curProvider) : null;
+  if (curF){
+    var shared = ranked.filter(function(x){
+      var f = familyOf(x.p.provider);
+      return f && f.parent === curF.parent &&
+             normProvider(x.p.provider) !== normProvider(curProvider);
+    });
+    if (shared.length){
+      var sn = shared.map(function(x){ return '<b>' + esc(x.p.provider) + '</b>'; });
+      var sl = sn.length > 1 ? sn.slice(0, -1).join(', ') + ' and ' + sn[sn.length - 1] : sn[0];
+      out +=
+        '<div class="famwarn">' +
+          '&#8505;&#65039; You are with <b>' + esc(curProvider) + '</b>, which is owned by <b>' +
+          esc(curF.parent) + '</b> &mdash; and so ' + (sn.length > 1 ? 'are ' : 'is ') + sl +
+          ' above. Moving there is a new rate, but the same company.' +
+        '</div>';
+    }
+  }
+  return out;
+}
+
 function breakevenNote(saveMo, etfStr, monthsRemaining){
   if (saveMo <= 0) return '';
   var etf = parseEtf(etfStr);
@@ -263,6 +355,9 @@ function uploadBill(file){
       if (f.total_bill_dollars != null) state.manualBill = f.total_bill_dollars;
       if (f.exit_fee_dollars != null) state.manualEtf = f.exit_fee_dollars;
       if (f.months_remaining != null) state.manualMonths = f.months_remaining;
+      // Kept so the results can say whether a "switch" stays inside the same
+      // parent company as the plan they're already on.
+      if (f.provider) state.manualProvider = f.provider;
       state.billSource = f;
       // Straight to the form, prefilled, so the user can check it before pricing.
       renderManualEntry(null, f);
@@ -379,6 +474,7 @@ function renderManualEntry(notice, prefill){
           return;
         }
         var f = j.fields || {}, got = [];
+        if (f.provider) state.manualProvider = f.provider;
         if (f.exit_fee_dollars != null){
           document.getElementById('mEtf').value = f.exit_fee_dollars;
           state.manualEtf = f.exit_fee_dollars;
@@ -434,14 +530,38 @@ function renderManualEntry(notice, prefill){
   document.getElementById('mUsage').focus();
 }
 
+// How long the rate is locked. Sorting on price alone puts a 5-month teaser at
+// the top of a list a shopper reads as "the best plan", so let them say what
+// they actually want and rank inside it.
+var TERM_BANDS = [
+  {id: 'any',   label: 'Any length',  sub: 'Cheapest first',        test: function(){ return true; }},
+  {id: 'short', label: '6 months',    sub: 'Or less — stay nimble', test: function(t){ return t <= 6; }},
+  {id: 'year',  label: 'About a year', sub: '7–18 months',          test: function(t){ return t >= 7 && t <= 18; }},
+  {id: 'long',  label: '2 years +',   sub: 'Lock it in',            test: function(t){ return t >= 19; }}
+];
+
+function termFilter(){
+  var band = TERM_BANDS.filter(function(b){ return b.id === state.termPref; })[0] || TERM_BANDS[0];
+  return function(p){
+    var t = parseFloat(p.term);
+    if (!t) return state.termPref === 'any';   // unknown term only survives "Any"
+    return band.test(t);
+  };
+}
+
 function renderResults(){
   state.step = 2; setDots();
   var kwh = state.usage;
-  var ranked = DATA.picks
+  var keep = termFilter();
+  var priced = DATA.picks
     .map(function(p){ return {p: p, m: planMonthly(p, kwh)}; })
     .filter(function(x){ return x.m != null; })
-    .sort(function(a, b){ return a.m - b.m; })
-    .slice(0, 3);
+    .sort(function(a, b){ return a.m - b.m; });
+  var inBand = priced.filter(function(x){ return keep(x.p); });
+  // Never strand the user on an empty screen: fall back to the full list and
+  // say so, rather than silently ignoring their choice.
+  var fellBack = (!inBand.length && priced.length > 0);
+  var ranked = (fellBack ? priced : inBand).slice(0, 3);
 
   // Current-plan comparison: a typed bill (from "Enter your info") takes
   // priority; otherwise use the plan the CLI marked as current (--current-efl).
@@ -484,10 +604,14 @@ function renderResults(){
     }
     var link = p.enroll_url || p.facts_url || '';
     var act = link ? '<div class="act"><a href="' + esc(link) + '" target="_blank" rel="noopener">Choose this plan &nbsp;&rarr;</a></div>' : '';
+    // Name the owner on every card that has one, not just the flagged clashes.
+    var fam = familyOf(p.provider);
+    var owner = (fam && normProvider(fam.parent) !== normProvider(p.provider))
+      ? '<span class="owner">part of ' + esc(fam.parent) + '</span>' : '';
     cards +=
       '<div class="plan n' + (i + 1) + (i === 0 ? ' best' : '') + '">' +
         '<span class="badge">' + labels[i] + '</span>' +
-        '<div class="prov">' + esc(p.provider) + '</div>' +
+        '<div class="prov">' + esc(p.provider) + owner + '</div>' +
         '<div class="name">' + esc(p.plan) + '</div>' +
         '<div class="price"><span class="amt">$' + m + '</span><span class="per">/ month at ' + kwh.toLocaleString() + ' kWh</span>' +
           '<span class="rate">' + (m / kwh * 100).toFixed(1) + '&cent;/kWh all-in</span></div>' +
@@ -499,14 +623,32 @@ function renderResults(){
   });
   if (!cards) cards = '<div class="card"><p class="lead">No plans could be priced at this usage. Try another home size.</p></div>';
 
+  var chips = TERM_BANDS.map(function(b){
+    var n = priced.filter(function(x){ return b.test(parseFloat(x.p.term) || 0); }).length;
+    return '<button class="chip' + (b.id === state.termPref ? ' on' : '') + '" data-term="' + b.id + '"' +
+           (n ? '' : ' disabled') + '>' + b.label +
+           '<span class="chipsub">' + (n ? b.sub : 'none here') + '</span></button>';
+  }).join('');
+
+  var fellBackMsg = fellBack
+    ? '<div class="famwarn">No plans here match that contract length, so these are the cheapest of any length.</div>'
+    : '';
+
   app.innerHTML =
     '<div class="card" style="background:transparent;border:0;box-shadow:none;padding:0">' +
       '<h2 class="q">Your 3 best plans</h2>' +
       '<p class="lead">Cheapest first, priced for a ' + kwh.toLocaleString() + ' kWh month. Tap a plan to sign up on the provider’s site.</p>' +
+      '<div class="termpick"><span class="termlab">How long do you want the rate locked?</span>' +
+        '<div class="chips">' + chips + '</div></div>' +
       banner +
+      fellBackMsg +
+      sameCompanyNote(ranked, state.manualProvider || (cur && cur.provider)) +
       '<div class="rank">' + cards + '</div>' +
       '<div class="navrow"><button class="link" id="back">' + (state.entry === 'manual' ? '&larr; Edit my info' : '&larr; Change home size') + '</button><button class="link" id="restart">Start over</button></div>' +
     '</div>';
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function(el){
+    el.onclick = function(){ state.termPref = el.getAttribute('data-term'); renderResults(); };
+  });
   document.getElementById('back').onclick = (state.entry === 'manual' ? renderManualEntry : renderUsage);
   document.getElementById('restart').onclick = renderIntro;
 }
@@ -520,7 +662,18 @@ function renderMessage(title, body){
 // Boot
 // ---------------------------------------------------------------------------
 
-fetch('/api/plans')
+// Ownership data is a nice-to-have: if it fails to load the page still ranks
+// plans correctly, it just can't tell you who owns whom.
+fetch('/static/brand_families.json')
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .catch(function(){ return null; })
+  .then(function(fam){
+    FAMILIES = ((fam && fam.families) || []).map(function(f){
+      f._brands = (f.brands || []).map(normProvider);
+      return f;
+    });
+    return fetch('/api/plans');
+  })
   .then(function(r){ return r.json(); })
   .then(function(raw){
     if (!raw || (raw._source && raw._source.ok === false)){

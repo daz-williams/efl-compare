@@ -76,6 +76,26 @@
   }
   .plan.n2 .badge, .plan.n3 .badge{background:var(--mid)}
   .plan .prov{color:var(--mid); font-size:.82rem; font-weight:600}
+  .plan .prov .owner{font-weight:500; opacity:.75; text-transform:none}
+  .plan .prov .owner::before{content:"·"; margin:0 6px}
+  /* Contract-length picker */
+  .termpick{margin:0 0 16px}
+  .termlab{display:block; color:var(--mid); font-size:.85rem; margin-bottom:8px}
+  .chips{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{display:flex; flex-direction:column; align-items:flex-start; gap:1px;
+    background:var(--card); color:var(--ink); border:1px solid var(--line);
+    border-radius:11px; padding:7px 13px; font:inherit; font-size:.86rem;
+    font-weight:700; cursor:pointer; text-align:left}
+  .chip .chipsub{font-weight:400; font-size:.74rem; color:var(--mid)}
+  .chip:hover:not(:disabled){border-color:var(--brand)}
+  .chip.on{border-color:var(--brand); background:var(--brand); color:#fff}
+  .chip.on .chipsub{color:#fff; opacity:.85}
+  .chip:disabled{opacity:.4; cursor:not-allowed}
+  /* Same-parent-company disclosure */
+  .famwarn{background:var(--warn-bg); border:1px solid var(--line);
+    border-radius:12px; padding:12px 15px; margin-bottom:14px; font-size:.9rem; line-height:1.5}
+  .famwarn .famnote{display:block; color:var(--mid); font-size:.83rem; margin-top:5px}
+  .famwarn .famsrc{display:inline-block; margin-top:5px; font-size:.78rem; color:var(--mid)}
   .plan .name{font-weight:800; font-size:1.15rem; margin:1px 0 8px; letter-spacing:-.01em}
   .price{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
   .price .amt{font-size:2.1rem; font-weight:800; letter-spacing:-.02em}
