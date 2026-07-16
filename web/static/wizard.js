@@ -162,6 +162,15 @@ function parseEtf(s){
   return m ? parseFloat(m[0]) : null;
 }
 
+// The CLI publishes cancellation_fee as a bare string ("175.00"), so it needs a
+// currency sign before it goes on screen.
+function fmtEtf(etfStr){
+  var v = parseEtf(etfStr);
+  if (v === null) return 'not stated';
+  if (v <= 0) return 'none';
+  return '$' + (v % 1 ? v.toFixed(2) : v.toFixed(0));
+}
+
 function breakevenNote(saveMo, etfStr, monthsRemaining){
   if (saveMo <= 0) return '';
   var etf = parseEtf(etfStr);
@@ -195,14 +204,59 @@ function renderIntro(){
           '<span class="emoji">&#128221;</span>' +
           '<span><span class="t">Enter your info</span><br><span class="d">Type your real monthly usage (and current bill) for exact pricing</span></span>' +
         '</button>' +
+        '<button class="choice" id="goUpload">' +
+          '<span class="emoji">&#128196;</span>' +
+          '<span><span class="t">Upload your bill</span><br><span class="d">Send us a PDF and we\'ll read the numbers off it for you</span></span>' +
+        '</button>' +
         '<button class="choice" id="goEstimate">' +
           '<span class="emoji">&#10024;</span>' +
           '<span><span class="t">Estimate</span><br><span class="d">Not sure? Pick your home size and we\'ll estimate it for you</span></span>' +
         '</button>' +
       '</div>' +
+      '<input type="file" id="billFile" accept="application/pdf,.pdf" class="hidden">' +
     '</div>';
   document.getElementById('goEnter').onclick = renderManualEntry;
   document.getElementById('goEstimate').onclick = renderUsage;
+  var picker = document.getElementById('billFile');
+  document.getElementById('goUpload').onclick = function(){ picker.click(); };
+  picker.onchange = function(){ if (picker.files && picker.files[0]) uploadBill(picker.files[0]); };
+}
+
+// Upload a bill PDF and prefill the manual form from whatever came back.
+// Anything the reader couldn't find stays blank for the user to fill in.
+function uploadBill(file){
+  state.step = 1; setDots();
+  app.innerHTML =
+    '<div class="card">' +
+      '<h2 class="q">Reading your bill…</h2>' +
+      '<p class="lead">Pulling out your usage and costs. This takes a few seconds.</p>' +
+      '<div class="err" id="uErr"></div>' +
+      '<div class="navrow"><button class="link" id="back">&larr; Cancel</button><span></span></div>' +
+    '</div>';
+  document.getElementById('back').onclick = renderIntro;
+
+  fetch('/api/parse-bill', {method: 'POST', body: file,
+                            headers: {'Content-Type': 'application/pdf'}})
+    .then(function(r){ return r.json().then(function(j){ return {status: r.status, body: j}; }); })
+    .then(function(res){
+      if (!res.body || !res.body.ok){
+        var msg = (res.body && res.body.error) || 'That bill could not be read.';
+        renderManualEntry(msg + ' You can type the numbers in instead.');
+        return;
+      }
+      var f = res.body.fields || {};
+      if (f.usage_kwh != null) state.usage = f.usage_kwh;
+      if (f.total_bill_dollars != null) state.manualBill = f.total_bill_dollars;
+      if (f.exit_fee_dollars != null) state.manualEtf = f.exit_fee_dollars;
+      if (f.months_remaining != null) state.manualMonths = f.months_remaining;
+      state.billSource = f;
+      // Straight to the form, prefilled, so the user can check it before pricing.
+      renderManualEntry(null, f);
+    })
+    .catch(function(err){
+      renderManualEntry('The upload failed (' + esc(err && err.message ? err.message : err) +
+                        '). You can type the numbers in instead.');
+    });
 }
 
 function renderUsage(){
@@ -232,16 +286,36 @@ function renderUsage(){
   });
 }
 
-function renderManualEntry(){
+// notice: optional warning to show above the form (e.g. an upload that failed).
+// prefill: the fields read off an uploaded bill, echoed back so the user can
+// check them — a misread number is worse than a blank one if it goes unnoticed.
+function renderManualEntry(notice, prefill){
   state.step = 1; state.entry = 'manual'; setDots();
   var uVal = state.usage != null ? state.usage : '';
   var bVal = state.manualBill != null ? state.manualBill : '';
   var eVal = state.manualEtf != null ? state.manualEtf : '';
   var mVal = state.manualMonths != null ? state.manualMonths : '';
+  var lead = 'Grab your latest electricity bill. Only the first box is required &mdash; add your total to see what you\'d save.';
+  var banner = '';
+  if (typeof notice === 'string' && notice){
+    banner = '<div class="curbanner">&#9888;&#65039; ' + esc(notice) + '</div>';
+  } else if (prefill){
+    var who = [prefill.provider, prefill.plan].filter(Boolean).join(' — ');
+    var found = [];
+    if (prefill.usage_kwh != null) found.push('usage');
+    if (prefill.total_bill_dollars != null) found.push('bill total');
+    if (prefill.exit_fee_dollars != null) found.push('exit fee');
+    if (prefill.months_remaining != null) found.push('months left');
+    banner = '<div class="curbanner">&#10003; Read from your bill' + (who ? ' (<b>' + esc(who) + '</b>)' : '') +
+      ': ' + (found.length ? esc(found.join(', ')) : 'nothing usable') +
+      '.<br><span style="color:var(--mid);font-size:.85em">Please check these against your bill before continuing — anything blank or wrong, just type over it.</span></div>';
+    lead = 'We filled in what we could read. Correct anything that looks off.';
+  }
   app.innerHTML =
     '<div class="card">' +
       '<h2 class="q">Enter your info</h2>' +
-      '<p class="lead">Grab your latest electricity bill. Only the first box is required &mdash; add your total to see what you\'d save.</p>' +
+      '<p class="lead">' + lead + '</p>' +
+      banner +
       '<div class="field">' +
         '<label>How many kWh did you use last month? <span class="hint">shown on your bill</span></label>' +
         '<div class="inrow"><input id="mUsage" type="number" inputmode="numeric" min="1" step="50" placeholder="e.g. 1200" value="' + uVal + '"><span class="unit">kWh</span></div>' +
@@ -251,7 +325,13 @@ function renderManualEntry(){
         '<div class="inrow"><span class="unit">$</span><input id="mBill" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g. 180" value="' + bVal + '"></div>' +
       '</div>' +
       '<div class="optional">' +
-        '<p class="why">Still under contract? Tell us these two and we\'ll work out whether leaving early is worth the exit fee.</p>' +
+        '<p class="why">Still under contract? These two let us work out whether leaving early is worth the exit fee. ' +
+          'They\'re not printed on your bill &mdash; they live in your contract, so upload that and we\'ll read them, or just type them in.</p>' +
+        '<button class="choice" id="goContract" type="button" style="margin-bottom:16px">' +
+          '<span class="emoji">&#128220;</span>' +
+          '<span><span class="t">Upload your contract</span><br><span class="d" id="cStatus">Optional &mdash; your contract or Electricity Facts Label (PDF)</span></span>' +
+        '</button>' +
+        '<input type="file" id="contractFile" accept="application/pdf,.pdf" class="hidden">' +
         '<div class="field">' +
           '<label>Your plan\'s exit fee <span class="hint">optional &mdash; on your contract as an early-termination fee</span></label>' +
           '<div class="inrow"><span class="unit">$</span><input id="mEtf" type="number" inputmode="decimal" min="0" step="10" placeholder="e.g. 150" value="' + eVal + '"></div>' +
@@ -266,6 +346,42 @@ function renderManualEntry(){
       '<div class="navrow"><button class="link" id="back">&larr; Back</button><span></span></div>' +
     '</div>';
   document.getElementById('back').onclick = renderIntro;
+
+  // Contract upload fills the two fields a bill can't supply. It writes into the
+  // inputs rather than replacing the screen, so the user sees what it found and
+  // can correct it.
+  var cPicker = document.getElementById('contractFile');
+  var cStatus = document.getElementById('cStatus');
+  document.getElementById('goContract').onclick = function(){ cPicker.click(); };
+  cPicker.onchange = function(){
+    if (!cPicker.files || !cPicker.files[0]) return;
+    cStatus.textContent = 'Reading your contract…';
+    fetch('/api/parse-contract', {method: 'POST', body: cPicker.files[0],
+                                  headers: {'Content-Type': 'application/pdf'}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j || !j.ok){
+          cStatus.textContent = (j && j.error) || 'That contract could not be read — type the two below instead.';
+          return;
+        }
+        var f = j.fields || {}, got = [];
+        if (f.exit_fee_dollars != null){
+          document.getElementById('mEtf').value = f.exit_fee_dollars;
+          state.manualEtf = f.exit_fee_dollars;
+          got.push('exit fee $' + f.exit_fee_dollars);
+        }
+        if (f.months_remaining != null){
+          document.getElementById('mMonths').value = f.months_remaining;
+          state.manualMonths = f.months_remaining;
+          got.push(fmtMonths(f.months_remaining) + ' months left');
+        }
+        cStatus.textContent = got.length
+          ? '✓ Read: ' + got.join(', ') + (f.plan ? ' (' + f.plan + ')' : '') + ' — check them below'
+          : 'Nothing usable found in that PDF — type the two below instead.';
+      })
+      .catch(function(){ cStatus.textContent = 'The upload failed — type the two below instead.'; });
+  };
+
   var go = function(){
     var err = document.getElementById('mErr');
     var u = parseInt(document.getElementById('mUsage').value, 10);
@@ -350,7 +466,7 @@ function renderResults(){
         '<div class="name">' + esc(p.plan) + '</div>' +
         '<div class="price"><span class="amt">$' + m + '</span><span class="per">/ month at ' + kwh.toLocaleString() + ' kWh</span></div>' +
         saveHtml +
-        '<div class="meta"><span>&#128274; Locked in for ' + (p.term || '?') + ' months</span>' + (green ? '<span>' + green + '</span>' : '') + '<span>Exit fee: ' + esc(p.etf || '$0') + '</span></div>' +
+        '<div class="meta"><span>&#128274; Locked in for ' + (p.term || '?') + ' months</span>' + (green ? '<span>' + green + '</span>' : '') + '<span>Exit fee: ' + fmtEtf(p.etf) + '</span></div>' +
         beHtml +
         act +
       '</div>';

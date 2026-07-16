@@ -1,6 +1,14 @@
 # Secrets — the Cloudflare Tunnel token and the LLM endpoint config.
 .env
 
+# Uploaded bills. Real bills carry names, addresses and account numbers —
+# never commit them.
+uploads/
+
+# Generated output from this folder's own efl_compare.py
+plans_latest.json
+plans_*.json
+
 # Python cache
 __pycache__/
 *.py[cod]

@@ -133,6 +133,8 @@ docker compose down
 | `GET /` | The interactive comparison table. |
 | `GET /wizard` | The plain-language guided view (see below). |
 | `GET /api/plans` | The full plan JSON (parent schema) plus a `_source` block describing where the data came from. |
+| `POST /api/parse-bill` | Reads an uploaded bill PDF (body = the raw PDF) and returns the usage/cost fields it could extract. |
+| `POST /api/parse-contract` | Reads an uploaded contract or EFL PDF and returns the exit fee and months remaining. |
 | `GET /api/health` | `{ status, data_available, source }` — handy for scripts/monitors. |
 
 `GET /api/plans` returns exactly the parent tool's `--json` payload
