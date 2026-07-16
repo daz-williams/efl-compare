@@ -69,17 +69,61 @@ Two rules worth keeping:
   drop. `--shadow-brand` sits under the primary button; `--shadow-card` lifts the
   top pick.
 
+## The mark
+
+`static/images/logo.svg` is the source artwork. `logo-mark.svg` is what the app
+uses, derived from it by dropping two things: the baked-in `#F5F6F7` rectangle
+(a cool-grey plate that clashes with the warm page and would be a light box in
+dark mode) and the fixed `1685pt` size (the `viewBox` alone scales to any box).
+
+It renders through `-webkit-mask`/`mask` with `background:currentColor`, not as
+an `<img>` — so it takes the theme's colour while staying an external, cached
+file.
+
+The prototype's nav puts a letter in a rounded orange square. That doesn't work
+with the real artwork: the mustang's mane is fine line-art, and at 24px inside a
+square it packed down to an unreadable smudge. So the horse *is* the mark, at
+46×32, and the orange moved from the plate onto the glyph. If a compact square
+mark is ever needed (a favicon, an app icon), it needs a redrawn glyph, not this
+one scaled down.
+
 ## Dark mode
 
 The prototype is light-only. The dark scheme in `theme.css` is derived from the
 same hues, because the app already honoured `prefers-color-scheme` and dropping
 that to match a mockup would be a regression for anyone who set it.
 
-Two things that needed changing rather than inverting:
+Three things needed real decisions rather than inversion:
 
 - `--brand` lifts to `#E8853C`. `#D96E1E` on a dark ground goes muddy and fails
   contrast.
 - `--ink` is a *warm* white (`#F4F2ED`). A blue-white fights the orange.
+- **Tints are alpha, not darkened hexes.** Darkening the light cream `#FBF1E7`
+  gave `#2C2117` — saturated enough to read brown, dark enough to read mud, and
+  it looked exactly as bad as that sounds. `--warn-bg` in dark is
+  `rgba(232,133,60,.12)`: the brand at low alpha over whatever sits behind it,
+  which stays harmonious at any depth. Same for `--good-bg`. If you add a tint,
+  do it this way.
+
+The dark palette is declared once as `--d-*` values and *mapped* onto the live
+token names by two selectors (the media query and `[data-theme="dark"]`). Each
+value therefore has one home; only the mapping list is repeated. Keep the two
+mapping lists identical.
+
+## Theme toggle
+
+The header button cycles **Auto → Light → Dark**, and the choice persists in
+`localStorage` under `efl-theme`.
+
+- **Auto is the resting state** and follows the OS. It gets its own icon (a
+  half-filled circle) so "following your system" is a visible state rather than
+  something you infer from the colours.
+- An explicit choice outranks the OS **in both directions** — hence
+  `:root:not([data-theme="light"])` on the media query, so someone on a dark OS
+  can actually get to the designed light palette and have it stick.
+- The stored choice is applied by a tiny inline script in `<head>`, before first
+  paint. Reading `localStorage` after the stylesheet paints means a flash of the
+  wrong theme on every load; that's why it's inline rather than in `wizard.js`.
 
 ## Writing
 
@@ -90,6 +134,25 @@ The visual style is only half of it; the prototype's voice is the other half.
 - Name the catch in one sentence, in the same size as everything else. Never
   bury it in grey 11px.
 - Second person, active. "You can switch whenever you like."
+
+---
+
+## Not built yet
+
+**The landing page.** The prototype has a full one — hero, "Easier than packing
+a lunchbox" three-step band, promises section, dark CTA panel. Only the design
+system was adopted; the page wasn't. It's wanted, and it's deliberately parked.
+
+It isn't blocked on effort. It's blocked on having true things to put in it: the
+prototype's landing copy is placeholder, and most of the trust-building content
+on it is false for this app (see the table below). Building it means writing the
+copy from scratch, not adapting the mockup's.
+
+**Vendor reviews.** Wanted, to build confidence in the top three. Parked until
+real data exists — there is no rating field anywhere in the PUCT feed. Do not
+generate, estimate, or infer them. The honest source is
+[PUCT complaint statistics](https://www.puc.texas.gov/industry/electric/directories/rep/):
+official, per-provider, citable.
 
 ---
 

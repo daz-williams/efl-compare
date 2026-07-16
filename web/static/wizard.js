@@ -16,6 +16,52 @@ var state = {step: 0, usage: null, entry: null, termPref: 'any',
              manualBill: null, manualEtf: null, manualMonths: null};
 
 // ---------------------------------------------------------------------------
+// Theme
+//
+// Three states, cycled by the header button: auto -> light -> dark -> auto.
+// Auto is the resting state and follows the OS; picking anything else is
+// remembered. The <head> applies the stored choice before first paint, so this
+// only has to handle changes and the button's own labelling.
+// ---------------------------------------------------------------------------
+
+var THEMES = [
+  {id: 'auto',  label: 'Theme: following your system. Switch to light.'},
+  {id: 'light', label: 'Theme: light. Switch to dark.'},
+  {id: 'dark',  label: 'Theme: dark. Switch to follow your system.'}
+];
+
+function currentTheme(){
+  return document.documentElement.getAttribute('data-theme') || 'auto';
+}
+
+function setTheme(id){
+  var root = document.documentElement;
+  if (id === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', id);
+  try{
+    if (id === 'auto') localStorage.removeItem('efl-theme');
+    else localStorage.setItem('efl-theme', id);
+  }catch(e){}          // storage unavailable: the choice just won't persist
+  var btn = document.getElementById('themeToggle');
+  if (btn){
+    var t = THEMES.filter(function(x){ return x.id === id; })[0] || THEMES[0];
+    btn.setAttribute('aria-label', t.label);
+    btn.setAttribute('title', t.label);
+  }
+}
+
+function initTheme(){
+  var btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  setTheme(currentTheme());
+  btn.onclick = function(){
+    var i = 0;
+    for (var j = 0; j < THEMES.length; j++) if (THEMES[j].id === currentTheme()) i = j;
+    setTheme(THEMES[(i + 1) % THEMES.length].id);
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Who actually owns the brand
 //
 // PUCT lists brands, not companies. Tara, Amigo and Just Energy are one
@@ -566,23 +612,60 @@ function renderResults(){
   // Current-plan comparison: a typed bill (from "Enter your info") takes
   // priority; otherwise use the plan the CLI marked as current (--current-efl).
   var cur = DATA.current;
-  var curM = null, curEtf = null, months = state.manualMonths, banner = '';
+  var curM = null, curEtf = null, months = state.manualMonths;
+  var curNote = '';
   if (state.manualBill != null){
     curM = Math.round(state.manualBill);
     // Exit fee is only known if the user typed it.
     curEtf = state.manualEtf != null ? String(state.manualEtf) : '?';
     var allIn = (state.manualBill / kwh * 100);
-    banner = '<div class="curbanner">Your last bill was about <b>$' + curM + '</b> for ' + kwh.toLocaleString() + ' kWh ' +
-      '&mdash; roughly <b>' + allIn.toFixed(1) + '&cent;/kWh</b> all-in. Here’s how the best plans compare:' +
-      '<br><span style="color:var(--mid);font-size:.85em">Your bill can include taxes and city fees these estimates leave out, so real savings may be a little smaller.</span></div>';
+    curNote = 'Your bill was about <b>$' + curM + '</b> for ' + kwh.toLocaleString() +
+      ' kWh &mdash; roughly <b>' + allIn.toFixed(1) + '&cent;/kWh</b> all-in. ' +
+      'Bills can include taxes and city fees these estimates leave out, so real savings may be a little smaller.';
   } else if (cur){
     curM = planMonthly(cur, kwh);
     curEtf = cur.etf;
     if (curM != null){
-      banner = '<div class="curbanner">You’re on <b>' + esc(cur.provider) + ' &mdash; ' + esc(cur.plan) + '</b>, ' +
-        'about <b>$' + curM + '/mo</b> at this usage. Here’s how the best plans compare:</div>';
+      curNote = 'You’re on <b>' + esc(cur.provider) + ' &mdash; ' + esc(cur.plan) +
+        '</b>, about <b>$' + curM + '/mo</b> at this usage.';
     }
   }
+
+  // The prototype's verdict block: the answer in one line, with what you pay
+  // today beside it. Savings are stated per month, not per year -- a year of
+  // savings on a 5-month plan is money the contract doesn't guarantee.
+  var banner = '';
+  if (curM != null && ranked.length){
+    var bestSave = curM - ranked[0].m;
+    var cheaper = priced.filter(function(x){ return x.m < curM; }).length;
+    var nowCard =
+      '<div class="vnow">' +
+        '<div class="eyebrow">You pay now</div>' +
+        '<div class="vamt">$' + curM + '<span>/mo</span></div>' +
+      '</div>';
+    if (bestSave > 0){
+      banner =
+        '<div class="verdict good">' +
+          '<div class="vmain">' +
+            '<h2 class="vhead">Good news &mdash; you could save $' + bestSave + ' a month</h2>' +
+            '<p class="vsub">' + (cheaper === 1 ? 'We found 1 plan' : 'We found ' + cheaper + ' plans') +
+            ' cheaper than your current one. ' +
+            (ranked.length > 1 ? 'Here are the best ' + (ranked.length === 2 ? 'two' : 'three') + '.' : 'Here it is.') +
+            '</p>' +
+          '</div>' + nowCard +
+        '</div>';
+    } else {
+      // No saving is still an answer, and a useful one -- don't dress it in green.
+      banner =
+        '<div class="verdict flat">' +
+          '<div class="vmain">' +
+            '<h2 class="vhead">You’re already on a good deal</h2>' +
+            '<p class="vsub">Nothing here beats what you pay now. Worth checking again when your contract ends.</p>' +
+          '</div>' + nowCard +
+        '</div>';
+    }
+  }
+  if (curNote) banner += '<div class="curbanner">' + curNote + '</div>';
 
   var labels = ['Best deal', '2nd best', '3rd best'];
   var cards = '';
@@ -661,6 +744,10 @@ function renderMessage(title, body){
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+
+// Wired up before any fetch, so the toggle still works on a page that failed to
+// load its data.
+initTheme();
 
 // Ownership data is a nice-to-have: if it fails to load the page still ranks
 // plans correctly, it just can't tell you who owns whom.

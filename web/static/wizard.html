@@ -6,15 +6,36 @@
 <title>Find your cheaper electricity plan</title>
 <!-- Palette, type and shared components: static/theme.css -->
 <link rel="stylesheet" href="/static/theme.css">
+<!-- Runs before first paint: reading the saved choice after the stylesheet has
+     painted would show a flash of the wrong theme on every load. Kept inline
+     and tiny for that reason — an external file would be a blocking request. -->
+<script>
+  (function(){
+    try{
+      var t = localStorage.getItem('efl-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    }catch(e){}   // private mode / storage disabled: fall through to auto
+  })();
+</script>
 <style>
   .wrap{max-width:760px; margin:0 auto; padding:24px 18px 64px}
   header.top{display:flex; align-items:center; gap:11px; padding:8px 2px 20px}
-  /* The mark from the prototype nav: a rounded brand square holding a letter. */
+  /* The prototype nav puts a letter in a rounded brand square. The real mark is
+     a traced mustang whose mane is fine line-art -- in a 24px square it packed
+     down to a smudge, so the horse is the mark itself at a size that can carry
+     the detail, and the orange moves from the plate onto the glyph. */
   .spark{
-    width:34px; height:34px; border-radius:10px; background:var(--brand);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
-    color:#fff; font-family:var(--font-head); font-weight:800; font-size:18px;
+    color:var(--brand);
   }
+  /* A CSS mask rather than an <img>, so it takes currentColor -- and so it
+     inverts with the theme -- while staying a cached external file. */
+  .spark .glyph{
+    width:46px; height:32px; background:currentColor;
+    -webkit-mask:url(/static/images/logo-mark.svg) center/contain no-repeat;
+            mask:url(/static/images/logo-mark.svg) center/contain no-repeat;
+  }
+  .top .titles{flex:1; min-width:0}
   .top h1{font-size:1.15rem; margin:0; font-weight:700; letter-spacing:-.02em}
   .top .sub{color:var(--faint); font-size:.8rem; margin-top:2px; font-weight:500}
   .dots{display:flex; gap:8px; justify-content:center; margin:6px 0 22px}
@@ -54,9 +75,37 @@
   }
   button.big:hover{background:var(--brand-dark)}
   .link{background:none; border:0; color:var(--brand); font:inherit; cursor:pointer; padding:8px; font-weight:700}
+  /* Verdict block — the prototype's results header: the answer on the left,
+     what you pay today on the right. */
+  .verdict{
+    border-radius:var(--r-md); padding:26px 30px; margin-bottom:14px;
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  }
+  .verdict.good{background:var(--good-bg)}
+  .verdict.flat{background:var(--surface-alt); border:1.5px solid var(--line)}
+  .verdict .vmain{flex:1; min-width:260px}
+  .vhead{
+    font-family:var(--font-head); font-size:clamp(21px,2.9vw,28px); font-weight:800;
+    letter-spacing:-.02em; line-height:1.2; margin:0 0 6px; text-wrap:balance;
+  }
+  .verdict.good .vhead{color:var(--good-dark)}
+  .verdict.good .vsub{color:var(--good)}
+  .verdict.flat .vhead{color:var(--ink)}
+  .verdict.flat .vsub{color:var(--mid)}
+  .vsub{margin:0; font-size:16px; font-weight:600}
+  .vnow{
+    text-align:center; background:var(--card); border-radius:16px; padding:16px 24px;
+    border:1.5px solid transparent;
+  }
+  .verdict.flat .vnow{border-color:var(--line)}
+  .vamt{
+    font-family:var(--font-head); font-weight:800; font-size:26px; color:var(--ink);
+    font-variant-numeric:tabular-nums; line-height:1.15;
+  }
+  .vamt span{font-size:14px; color:var(--faint); font-weight:600}
   .curbanner{
-    background:var(--warn-bg); border:1.5px solid var(--line); border-radius:var(--r-sm);
-    padding:14px 17px; margin-bottom:18px; font-size:.95rem;
+    background:var(--surface-alt); border:1.5px solid var(--line); border-radius:var(--r-sm);
+    padding:13px 17px; margin-bottom:18px; font-size:.88rem; color:var(--mid); line-height:1.55;
   }
   .curbanner b{color:var(--ink)}
   .rank{display:flex; flex-direction:column; gap:18px}
@@ -149,11 +198,33 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <span class="spark" aria-hidden="true">M</span>
-    <div>
+    <span class="spark" aria-hidden="true"><span class="glyph"></span></span>
+    <div class="titles">
       <h1>Find your cheaper electricity plan</h1>
       <div class="sub" id="subline"></div>
     </div>
+    <!-- Label and pressed-state are set by setTheme() in wizard.js, so a
+         screen reader hears which of the three modes is active. -->
+    <button class="themetoggle" id="themeToggle" type="button" title="Theme">
+      <!-- Auto: half-filled circle — following the system. -->
+      <svg class="i-auto" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 3a9 9 0 0 1 0 18V3z" fill="currentColor"/>
+      </svg>
+      <!-- Light: sun. -->
+      <svg class="i-light" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2" fill="currentColor"/>
+        <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2"/>
+          <path d="M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>
+        </g>
+      </svg>
+      <!-- Dark: crescent. -->
+      <svg class="i-dark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z"
+              fill="currentColor"/>
+      </svg>
+    </button>
   </header>
   <div class="dots"><span class="dot on" id="d0"></span><span class="dot" id="d1"></span><span class="dot" id="d2"></span></div>
   <div id="app"></div>
