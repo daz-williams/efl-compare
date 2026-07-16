@@ -93,17 +93,39 @@ The prototype is light-only. The dark scheme in `theme.css` is derived from the
 same hues, because the app already honoured `prefers-color-scheme` and dropping
 that to match a mockup would be a regression for anyone who set it.
 
+**The palette's spine is warm surfaces, warm lines, cool-grey text — and that
+holds in dark too.** This is the one rule to not break. It's easy to miss
+because the light theme's *text* is cool (`--mid` `#5A6070`, `--faint`
+`#9CA1AD` both lean blue) while everything under it is warm. That tension is the
+prototype's, and it's deliberate.
+
 Three things needed real decisions rather than inversion:
 
 - `--brand` lifts to `#E8853C`. `#D96E1E` on a dark ground goes muddy and fails
   contrast.
 - `--ink` is a *warm* white (`#F4F2ED`). A blue-white fights the orange.
 - **Tints are alpha, not darkened hexes.** Darkening the light cream `#FBF1E7`
-  gave `#2C2117` — saturated enough to read brown, dark enough to read mud, and
-  it looked exactly as bad as that sounds. `--warn-bg` in dark is
-  `rgba(232,133,60,.12)`: the brand at low alpha over whatever sits behind it,
-  which stays harmonious at any depth. Same for `--good-bg`. If you add a tint,
-  do it this way.
+  gave `#2C2117` — saturated enough to read brown, dark enough to read mud.
+  `--warn-bg` in dark is `rgba(232,133,60,.12)`: the brand at low alpha over
+  whatever sits behind it. Same for `--good-bg`. If you add a tint, do it this
+  way.
+
+### Measure warmth before touching `--d-*`
+
+Two passes got this wrong, and the same check would have caught both. Take
+**R−B** (red channel minus blue) of any surface: positive is warm, negative is
+cool. Light runs `--bg` **+2**, `--surface-alt` **+7**, `--line` **+8**.
+
+The dark surfaces were first built from the prototype's `#20242B` — but that
+colour is a small accent panel *inside* a warm page, not a surface system.
+Promoted to a page background it made every dark surface blue-grey (**−11**)
+while the brand tint over it composited warm (**+12**). Warm on cool: a
+mud-brown box dropped on a fintech-grey page. The tint was never the fault; the
+ground under it was.
+
+The dark surfaces now run **+4 to +9**, and `--warn-bg` lands **+20** warmer than
+its surface — the exact step it takes from `--card` in light. Keep it that way:
+if a dark surface goes negative, the orange has nothing to sit on.
 
 The dark palette is declared once as `--d-*` values and *mapped* onto the live
 token names by two selectors (the media query and `[data-theme="dark"]`). Each

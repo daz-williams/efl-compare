@@ -101,19 +101,33 @@
    query: an explicit choice outranks the OS in both directions.
    ------------------------------------------------------------------------ */
 :root{
-  /* Same hues as light, pulled down. #20242B is the prototype's own dark
-     panel, so it becomes the card and the page sits a step below it. */
-  --d-bg:#15181E;
-  --d-card:#20242B;
-  --d-surface-alt:#1A1E25;
-  --d-surface-sunk:#262B34;
+  /* Surfaces are WARM, exactly as in light. This is the whole palette's spine:
+     warm surfaces, warm lines, cool-grey text. Break it and the brand orange
+     has nothing to sit on.
+
+     An earlier pass built these from the prototype's #20242B. That colour is a
+     small accent panel *inside* a warm page, not a surface system -- promoting
+     it to the page background made every dark surface blue-grey (R-B about -11)
+     while the brand tint over it composited warm (+12). Warm on cool: it read
+     as a mud-brown box dropped on a fintech-grey page. The tint was never the
+     problem.
+
+     Measure before changing these. R-B (red minus blue) should stay positive
+     and roughly track light's: --bg +2, --surface-alt +7, --line +8. */
+  --d-bg:#1A1816;             /* R-B +4  */
+  --d-card:#24211D;           /* R-B +7  */
+  --d-surface-alt:#1F1D19;    /* R-B +6  */
+  --d-surface-sunk:#2C2823;   /* R-B +9  */
 
   --d-ink:#F4F2ED;            /* warm white — a blue-white fights the orange */
-  --d-mid:#A8AEBB;
-  --d-faint:#767C89;
+  /* Text stays cool-grey against the warm surfaces, mirroring light, where
+     --mid (#5A6070) and --faint (#9CA1AD) are both blue-leaning. That warm/cool
+     tension is the prototype's, not an accident. */
+  --d-mid:#A6ABB4;
+  --d-faint:#797E88;
 
-  --d-line:#2E343E;
-  --d-line-strong:#3A404C;
+  --d-line:#34302A;           /* R-B +10 */
+  --d-line-strong:#443F37;    /* R-B +13 */
   --d-line-dashed:#4A4237;
 
   /* Lifted: #D96E1E on a dark ground goes muddy and fails contrast. */
@@ -124,15 +138,18 @@
   /* Tints are the brand at low alpha over whatever sits behind, NOT a hex
      darkened off the light tint. Darkening #FBF1E7 produced #2C2117 —
      saturated enough to read brown, dark enough to read mud. Alpha keeps a
-     notice harmonised with its surface at any depth. */
+     notice harmonised with its surface at any depth, but only once that
+     surface is warm: over the old blue-grey card this composited to a clashing
+     #38302D. Over the warm card it lands +20 warmer than its surface, the same
+     step --warn-bg takes from --card in light. */
   --d-warn-bg:rgba(232,133,60,.12);
 
   --d-good:#4FB380;
   --d-good-dark:#8FD9B4;
   --d-good-bg:rgba(79,179,128,.13);
 
-  --d-dark:#0F1217;
-  --d-on-dark-mid:#9AA0AC;
+  --d-dark:#100E0C;           /* warm near-black for inverted panels */
+  --d-on-dark-mid:#A6A099;
 
   --d-cat-blue:#6A8FC5;
   --d-cat-gold:#C9A455;
