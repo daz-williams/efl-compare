@@ -144,6 +144,46 @@ added `_source` object. On error (no data file, bad JSON, …) it returns
 `plans` array — so the front-end can render a helpful state rather than a stack
 trace.
 
+### Protecting the bill reader
+
+Serving JSON is free. `POST /api/parse-bill` runs a multimodal model over
+someone's PDF, and once it's published through the tunnel anyone who learns the
+URL can spend your GPU. Three limits apply, all set in `web/.env` or
+`docker-compose.yml` (see `ratelimit.py`):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `EFL_RATE_PER_HOUR` | `12` | Bills per caller per hour (`0` disables). |
+| `EFL_RATE_BURST` | `4` | How many may be back-to-back before throttling. |
+| `EFL_MAX_CONCURRENT` | `2` | Models running at once; past this, `503` + "try again". |
+| `EFL_API_TOKEN` | unset | When set, requires `X-API-Key` (or `Bearer`). |
+| `EFL_TRUST_PROXY` | `1` in Docker | Read the caller's IP from `CF-Connecting-IP`. |
+
+The server prints the limits actually in force at startup, so they're never a
+guess:
+
+```
+Limits:   12/hr per caller (burst 4) · max 2 at once · no API key · client IP from proxy headers
+```
+
+Two things worth knowing:
+
+- **`EFL_TRUST_PROXY` is not a free win.** Behind the tunnel every request
+  arrives from the tunnel itself, so without it the whole internet shares one
+  bucket and a single abuser locks everybody out. But the header is also
+  trivially forged, and a forged one defeats the limiter completely — so it's
+  only safe because Cloudflare's edge overwrites `CF-Connecting-IP` and port
+  8090 is published to `127.0.0.1` only. Don't enable it if you expose the port
+  directly.
+- **`EFL_API_TOKEN` is not public auth.** A key shipped to a public page's
+  JavaScript is readable by anyone who opens devtools. It's for locking the
+  endpoint down for private or scripted use. For real authentication, put
+  [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
+  in front of the tunnel — it authenticates before traffic ever reaches here.
+
+Buckets are held in memory, so a restart forgives everyone. That's fine at this
+scale; it would need a shared store only if this ran on more than one process.
+
 ---
 
 ## The wizard (`/wizard`)

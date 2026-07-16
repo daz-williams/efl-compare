@@ -53,6 +53,13 @@ try:
 except ImportError:          # PyMuPDF/openai absent — /api/parse-bill will 503
     bill_parser = None
 
+# Abuse controls for the endpoints that spend GPU time. Imported after the
+# .env load above so the limits can be configured there.
+import ratelimit
+
+RATE = ratelimit.RateLimiter()
+BUSY = ratelimit.ConcurrencyGuard()
+
 HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
 # This folder is self-contained: its own efl_compare.py writes plans_latest.json
@@ -185,9 +192,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def _send_json(self, status: int, obj) -> None:
+    def _send_json(self, status: int, obj, extra_headers: dict | None = None) -> None:
         body = json.dumps(obj).encode("utf-8")
-        self._send(status, body, "application/json; charset=utf-8")
+        self._send(status, body, "application/json; charset=utf-8", extra_headers)
 
     def _serve_static(self, rel_path: str) -> None:
         # Normalise and confine to STATIC_DIR (no path traversal).
@@ -250,6 +257,22 @@ class Handler(BaseHTTPRequestHandler):
                 "Bill reading needs PyMuPDF and openai: pip install -r requirements.txt"})
             return
 
+        # Cheapest rejections first: a wrong key or an exhausted bucket should
+        # cost nothing, so both are settled before the body is read off the wire.
+        if not ratelimit.token_ok(self):
+            self._send_json(401, {"ok": False, "error": "A valid API key is required."})
+            return
+
+        caller = ratelimit.client_key(self)
+        allowed, retry_after = RATE.check(caller)
+        if not allowed:
+            mins = max(1, round(retry_after / 60))
+            self._send_json(429, {"ok": False, "error":
+                f"That's a lot of bills. Try again in about {mins} minute"
+                f"{'s' if mins != 1 else ''}, or type the numbers in instead."},
+                {"Retry-After": str(retry_after)})
+            return
+
         # The body is the raw PDF (the wizard POSTs the File object directly),
         # so there is no multipart parsing to do. Refuse on the declared length
         # before reading, so an oversized upload costs nothing.
@@ -274,18 +297,27 @@ class Handler(BaseHTTPRequestHandler):
         # A bill says what you used; a contract says what leaving costs.
         reader = (bill_parser.parse_bill if path == "/api/parse-bill"
                   else bill_parser.parse_contract)
-        try:
-            fields = reader(body)
-        except bill_parser.BillParseError as exc:
-            # Expected, user-fixable: say what went wrong.
-            self._send_json(422, {"ok": False, "error": str(exc)})
-            return
-        except Exception as exc:
-            # Unexpected: log it, but don't leak internals to the page.
-            sys.stderr.write(f"  {path} failed: {exc!r}\n")
-            self._send_json(502, {"ok": False, "error":
-                "The bill reader is unavailable. Check the LLM endpoint in .env."})
-            return
+
+        # One GPU, and a vision pass on a scan is not quick. Past the cap, say so
+        # and let them type instead of piling onto a queue nobody is draining.
+        with BUSY as got_slot:
+            if not got_slot:
+                self._send_json(503, {"ok": False, "error":
+                    "The bill reader is busy right now. Try again in a moment, "
+                    "or type the numbers in instead."}, {"Retry-After": "20"})
+                return
+            try:
+                fields = reader(body)
+            except bill_parser.BillParseError as exc:
+                # Expected, user-fixable: say what went wrong.
+                self._send_json(422, {"ok": False, "error": str(exc)})
+                return
+            except Exception as exc:
+                # Unexpected: log it, but don't leak internals to the page.
+                sys.stderr.write(f"  {path} failed: {exc!r}\n")
+                self._send_json(502, {"ok": False, "error":
+                    "The bill reader is unavailable. Check the LLM endpoint in .env."})
+                return
 
         self._send_json(200, {"ok": True, "fields": fields})
 
@@ -353,6 +385,7 @@ def main(argv=None) -> int:
         print(f"            Expected: {LOCAL_JSON}")
     else:
         print(f"  Data:     {resolved}")
+    print(f"  Limits:   {ratelimit.describe()}")
     if args.reload:
         print("  Reload:   on (watching *.py)")
         threading.Thread(target=_watch_and_restart, daemon=True).start()
