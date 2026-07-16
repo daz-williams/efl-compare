@@ -368,12 +368,21 @@ function renderManualEntry(notice, prefill){
         if (f.exit_fee_dollars != null){
           document.getElementById('mEtf').value = f.exit_fee_dollars;
           state.manualEtf = f.exit_fee_dollars;
-          got.push('exit fee $' + f.exit_fee_dollars);
+          got.push(f.exit_fee_dollars > 0 ? 'exit fee $' + f.exit_fee_dollars : 'no exit fee');
         }
         if (f.months_remaining != null){
           document.getElementById('mMonths').value = f.months_remaining;
           state.manualMonths = f.months_remaining;
-          got.push(fmtMonths(f.months_remaining) + ' months left');
+          if (f.contract_type !== 'month-to-month')
+            got.push(fmtMonths(f.months_remaining) + ' months left');
+        }
+        // Month-to-month is the happiest answer there is: nothing to wait out
+        // and nothing to pay. Say so, rather than showing "exit fee $0".
+        if (f.contract_type === 'month-to-month'){
+          cStatus.innerHTML = '&#10003; You\'re on a <b>month-to-month</b> plan' +
+            (f.plan ? ' (' + esc(f.plan) + ')' : '') +
+            ' with no exit fee &mdash; you can switch whenever you like.';
+          return;
         }
         cStatus.textContent = got.length
           ? '✓ Read: ' + got.join(', ') + (f.plan ? ' (' + f.plan + ')' : '') + ' — check them below'

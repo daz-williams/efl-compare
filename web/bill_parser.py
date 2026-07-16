@@ -271,6 +271,7 @@ _CONTRACT_SCHEMA = {
         "contract_end":      {"type": "string"},
         "contract_start":    {"type": "string"},
         "term_months":       {"type": "string"},
+        "contract_type":     {"type": "string"},
         "energy_rate_cents": {"type": "string"},
         "provider":          {"type": "string"},
         "plan":              {"type": "string"},
@@ -296,7 +297,10 @@ _CONTRACT_SYSTEM = (
     "- exit_fee_dollars: the early-termination/cancellation fee in dollars, digits "
     "and optional decimal point only (e.g. '150'). If the document says there is "
     "no fee, return '0'.\n"
-    "- term_months: the contract length in months, digits only (e.g. '24').\n"
+    "- term_months: the contract length in months, digits only (e.g. '24'). Empty "
+    "if the plan is month-to-month.\n"
+    "- contract_type: 'month-to-month' if the term is month-to-month/variable with "
+    "no fixed end, 'fixed' if it runs for a set number of months, else ''.\n"
     "- contract_start / contract_end: dates as 'YYYY-MM' (e.g. '2027-02'). Empty "
     "if not stated.\n"
     "- energy_rate_cents: the energy charge in CENTS per kWh (e.g. '11.4').\n"
@@ -362,6 +366,11 @@ def parse_contract(pdf_bytes: bytes) -> dict:
     rate = _num(data.get("energy_rate_cents"))
     end = (data.get("contract_end") or "").strip()
     start = (data.get("contract_start") or "").strip()
+    ctype = (data.get("contract_type") or "").strip().lower()
+    if "month-to-month" in ctype or "month to month" in ctype:
+        ctype = "month-to-month"
+    elif ctype != "fixed":
+        ctype = ""
 
     if fee is not None and not (0 <= fee <= 5000):
         fee = None
@@ -375,9 +384,16 @@ def parse_contract(pdf_bytes: bytes) -> dict:
     if not _months_until(end) and start and term:
         end = _add_months(start, int(term))
 
+    # A month-to-month plan has no term to run down: there is nothing to wait
+    # out, so "months remaining" is not unknown -- it is zero.
+    months = _months_until(end)
+    if months is None and ctype == "month-to-month":
+        months = 0.0
+
     return {
         "exit_fee_dollars": round(fee, 2) if fee is not None else None,
-        "months_remaining": _months_until(end),
+        "months_remaining": months,
+        "contract_type":    ctype,
         "contract_end":     end,
         "term_months":      int(term) if term is not None else None,
         "energy_rate_cents": round(rate, 2) if rate is not None else None,
